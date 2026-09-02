@@ -6,7 +6,7 @@
 ## 1. 发布规则
 
 - 每条推介在**开球前至少 2 小时**以 PR 合并进 `main`；CI 用 GitHub Actions
-  服务器时钟对新推介文件强制执行（`validate.mjs --gate`）。
+  服务器时钟对新推介文件强制执行（PR 门控脚本 `validate-pr.mjs`，复用 `validate.mjs --gate` 逻辑）。
 - 已合并的 `picks/**/*.json` 与 `results/**/*.json` 不得修改、删除或重命名；CI 对 PR diff
   强制执行追加式约束。结果错误只能新增 `.rN.json` 修正文件。
 - **全量公布义务**：所有实际下注或推荐的推介都必须入账，不允许选择性公布。

@@ -73,6 +73,9 @@ npm run build               # 生成静态站 site-dist/
 
 ## 上线操作清单（对外动作，一次性）
 
+> ✅ 已于 2026-09-02 执行完毕（单人维护，必需批准数调整为 0，其余保护全量生效），
+> 实测记录见 [LAUNCH.md](LAUNCH.md)。
+
 ```bash
 # 1. 创建公开仓库并推送（账本必须从第一个 commit 起就是干净历史）
 gh repo create pattern-xi-ledger --public --source=. --push
