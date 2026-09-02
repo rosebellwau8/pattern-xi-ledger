@@ -58,6 +58,7 @@ jobs:
       - name: Stamp new manifests and upgrade pending attestations
         run: |
           for f in manifests/*.txt; do
+            [ -f "$f" ] || continue
             [ -f "$f.ots" ] || ots stamp "$f"
           done
           for f in manifests/*.ots; do
