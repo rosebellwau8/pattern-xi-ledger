@@ -1,0 +1,50 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ledger:
+    name: Ledger integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Run tests (52-case golden settlement oracle + ledger rules)
+        run: node --test "tests/*.test.mjs" "tests/*.test.ts"
+
+      - name: Validate all picks, results, and correction chains
+        run: node scripts/validate.mjs
+
+      - name: Gate newly added picks at least 2 hours before kickoff
+        if: github.event_name == 'pull_request'
+        run: |
+          added=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD" -- picks)
+          if [ -n "$added" ]; then
+            # The Actions runner clock is the server-side publication witness.
+            echo "$added" | xargs node scripts/validate.mjs --gate
+          else
+            echo "no newly added pick files in this pull request"
+          fi
+
+      - name: Rebuild derived settlements and standings
+        run: |
+          node scripts/settle.mjs
+          node scripts/standings.mjs
+
+      - name: Require derived files to be current
+        run: git diff --exit-code -- settlements standings

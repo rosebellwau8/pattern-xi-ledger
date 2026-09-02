@@ -1,0 +1,22 @@
+{
+  "schema": "pattern-xi.standings.v1",
+  "unit_stake": "1",
+  "rules": "settlement-rules.v1",
+  "pick_count": 0,
+  "settled_count": 0,
+  "pending_count": 0,
+  "void_count": 0,
+  "n": 0,
+  "classification_counts": {
+    "WIN": 0,
+    "HALF_WIN": 0,
+    "PUSH": 0,
+    "HALF_LOSS": 0,
+    "LOSS": 0
+  },
+  "average_decimal_price": null,
+  "total_net_return": "0",
+  "roi_percent": null,
+  "maximum_drawdown": "0",
+  "cumulative_return_curve": []
+}

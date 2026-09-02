@@ -1,0 +1,480 @@
+{
+  "dataset_id": "settlement-v1",
+  "status": "NORMATIVE_OWNER_REVIEWED_PASS",
+  "normative": true,
+  "case_count": 52,
+  "rules_source": "SETTLEMENT_RULES.md v1.0",
+  "evaluation_unit": "1",
+  "stored_arithmetic": "exact_decimal_no_rounding",
+  "default_frozen_price": {
+    "published_price_format": "HONG_KONG_ODDS",
+    "published_price_value": "0.93",
+    "normalized_decimal_price": "1.93",
+    "conversion_rule": "hong-kong-to-decimal.v1"
+  },
+  "approval_notice": "Owner-reviewed normative Golden Dataset frozen on 2026-08-25. Any case addition or expected-result change requires a reviewed normative change.",
+  "frozen_decisions": {
+    "return_formula": {
+      "WIN": "p - 1",
+      "HALF_WIN": "(p - 1) / 2",
+      "PUSH": "0",
+      "HALF_LOSS": "-0.5",
+      "LOSS": "-1",
+      "VOID": "0"
+    },
+    "postponed_48_hour_equality": "An actual kickoff at frozen_scheduled_kickoff_at + 48 hours remains eligible; one instant later is VOID.",
+    "interrupted_continuity_deadline": "Regulation completion by the same fixture at actual_kickoff_at + 48 hours remains eligible; later completion or a replay from 00:00 is VOID.",
+    "interrupted_evidence_deadline": "actual_kickoff_at + 168 hours is only the evidence/status-resolution deadline. It does not extend match continuity eligibility.",
+    "authoritative_arithmetic": "Parse decimal strings and calculate with exact Decimal only. IEEE-754 is prohibited. Stored results are unrounded; aggregates use unrounded values.",
+    "public_display": "ROUND_HALF_UP to exactly three fractional digits and normalize negative zero to 0.000.",
+    "authority_hierarchy": [
+      "COMPETITION_AUTHORITY",
+      "COMPETITION_DESIGNATED_OFFICIAL_PROVIDER",
+      "CLUB_OFFICIAL_SUPPORTING_ONLY"
+    ],
+    "non_authoritative_sources": [
+      "ORDINARY_SCORE_SITE",
+      "MEDIA",
+      "STREAM",
+      "SEARCH_RESULT",
+      "FORUM"
+    ],
+    "interruption_dispositions": [
+      "RESUMED_SAME_FIXTURE",
+      "REPLAYED_FROM_ZERO",
+      "ABANDONED_FINAL",
+      "UNKNOWN"
+    ],
+    "correction_kinds": [
+      "SOURCE_DATA_ERROR",
+      "SETTLEMENT_LOGIC_ERROR",
+      "OFFICIAL_RESULT_CORRECTION",
+      "ADMINISTRATIVE_RESULT_CHANGE"
+    ]
+  },
+  "display_examples": [
+    { "unrounded": "0.45625", "display": "0.456" },
+    { "unrounded": "0.45650", "display": "0.457" },
+    { "unrounded": "-0.00040", "display": "0.000" }
+  ],
+  "cases": [
+    {
+      "id": "SET-PROP-001",
+      "group": "whole_line",
+      "title": "Home -1.00 wins by two",
+      "official": { "selection": "HOME", "line": "-1.00", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 3, "away_score": 1 },
+      "expected": { "components": [{ "line": "-1.00", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-002",
+      "group": "whole_line",
+      "title": "Home -1.00 wins by one",
+      "official": { "selection": "HOME", "line": "-1.00", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 1 },
+      "expected": { "components": [{ "line": "-1.00", "result": "PUSH" }], "classification": "PUSH", "net_return": "0", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-003",
+      "group": "whole_line",
+      "title": "Home -1.00 draws",
+      "official": { "selection": "HOME", "line": "-1.00", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 1 },
+      "expected": { "components": [{ "line": "-1.00", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-004",
+      "group": "whole_line",
+      "title": "Away +1.00 wins outright",
+      "official": { "selection": "AWAY", "line": "+1.00", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 0, "away_score": 1 },
+      "expected": { "components": [{ "line": "+1.00", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-005",
+      "group": "whole_line",
+      "title": "Away +1.00 loses by one",
+      "official": { "selection": "AWAY", "line": "+1.00", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 1 },
+      "expected": { "components": [{ "line": "+1.00", "result": "PUSH" }], "classification": "PUSH", "net_return": "0", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-006",
+      "group": "whole_line",
+      "title": "Away +1.00 loses by two",
+      "official": { "selection": "AWAY", "line": "+1.00", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 3, "away_score": 1 },
+      "expected": { "components": [{ "line": "+1.00", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-007",
+      "group": "half_line",
+      "title": "Home -0.50 wins",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 0 },
+      "expected": { "components": [{ "line": "-0.50", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-008",
+      "group": "half_line",
+      "title": "Home -0.50 draws",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 0, "away_score": 0 },
+      "expected": { "components": [{ "line": "-0.50", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-009",
+      "group": "half_line",
+      "title": "Away +0.50 draws",
+      "official": { "selection": "AWAY", "line": "+0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 1 },
+      "expected": { "components": [{ "line": "+0.50", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-010",
+      "group": "half_line",
+      "title": "Away +0.50 loses by one",
+      "official": { "selection": "AWAY", "line": "+0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 1 },
+      "expected": { "components": [{ "line": "+0.50", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-011",
+      "group": "half_line",
+      "title": "Home -1.50 wins by two",
+      "official": { "selection": "HOME", "line": "-1.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 0 },
+      "expected": { "components": [{ "line": "-1.50", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-012",
+      "group": "half_line",
+      "title": "Home -1.50 wins by one",
+      "official": { "selection": "HOME", "line": "-1.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 0 },
+      "expected": { "components": [{ "line": "-1.50", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-013",
+      "group": "interrupted_continuity",
+      "title": "Same fixture completes regulation at +30h and evidence arrives at +60h",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "RESUMED_SAME_FIXTURE", "regulation_completed_at": "2026-09-02T18:00:00Z", "status_determined_at": "2026-09-04T00:00:00Z", "home_score": 2, "away_score": 1, "official_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Official competition match report" }] },
+      "expected": { "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED", "completion_within_continuity_deadline": true, "late_evidence_does_not_invalidate_timely_completion": true }
+    },
+    {
+      "id": "SET-PROP-014",
+      "group": "interrupted_continuity",
+      "title": "Same fixture completes regulation one second after +48h",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "RESUMED_SAME_FIXTURE", "regulation_completed_at": "2026-09-03T12:00:01Z", "status_determined_at": "2026-09-04T00:00:00Z", "home_score": 2, "away_score": 1, "official_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Official competition match report" }] },
+      "expected": { "classification": "VOID", "net_return": "0", "record_state": "SETTLED", "completion_within_continuity_deadline": false, "later_official_score_cannot_restore_eligibility": true }
+    },
+    {
+      "id": "SET-PROP-015",
+      "group": "quarter_line",
+      "title": "Home -0.25 wins",
+      "official": { "selection": "HOME", "line": "-0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 0 },
+      "expected": { "components": [{ "line": "0.00", "result": "WIN" }, { "line": "-0.50", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-016",
+      "group": "quarter_line",
+      "title": "Home -0.25 draws",
+      "official": { "selection": "HOME", "line": "-0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 1 },
+      "expected": { "components": [{ "line": "0.00", "result": "PUSH" }, { "line": "-0.50", "result": "LOSS" }], "classification": "HALF_LOSS", "net_return": "-0.5", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-017",
+      "group": "quarter_line",
+      "title": "Home -0.25 loses",
+      "official": { "selection": "HOME", "line": "-0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 0, "away_score": 1 },
+      "expected": { "components": [{ "line": "0.00", "result": "LOSS" }, { "line": "-0.50", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-018",
+      "group": "quarter_line",
+      "title": "Away +0.25 wins",
+      "official": { "selection": "AWAY", "line": "+0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 0, "away_score": 1 },
+      "expected": { "components": [{ "line": "0.00", "result": "WIN" }, { "line": "+0.50", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-019",
+      "group": "quarter_line",
+      "title": "Away +0.25 draws",
+      "official": { "selection": "AWAY", "line": "+0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 1 },
+      "expected": { "components": [{ "line": "0.00", "result": "PUSH" }, { "line": "+0.50", "result": "WIN" }], "classification": "HALF_WIN", "net_return": "0.465", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-020",
+      "group": "quarter_line",
+      "title": "Away +0.25 loses by one",
+      "official": { "selection": "AWAY", "line": "+0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 1 },
+      "expected": { "components": [{ "line": "0.00", "result": "LOSS" }, { "line": "+0.50", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-021",
+      "group": "quarter_line",
+      "title": "Home -0.75 wins by two",
+      "official": { "selection": "HOME", "line": "-0.75", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 0 },
+      "expected": { "components": [{ "line": "-0.50", "result": "WIN" }, { "line": "-1.00", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-022",
+      "group": "quarter_line",
+      "title": "Home -0.75 wins by one",
+      "official": { "selection": "HOME", "line": "-0.75", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 0 },
+      "expected": { "components": [{ "line": "-0.50", "result": "WIN" }, { "line": "-1.00", "result": "PUSH" }], "classification": "HALF_WIN", "net_return": "0.465", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-023",
+      "group": "quarter_line",
+      "title": "Home -0.75 draws",
+      "official": { "selection": "HOME", "line": "-0.75", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 0, "away_score": 0 },
+      "expected": { "components": [{ "line": "-0.50", "result": "LOSS" }, { "line": "-1.00", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-024",
+      "group": "quarter_line",
+      "title": "Away +0.75 draws",
+      "official": { "selection": "AWAY", "line": "+0.75", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 1 },
+      "expected": { "components": [{ "line": "+0.50", "result": "WIN" }, { "line": "+1.00", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-025",
+      "group": "quarter_line",
+      "title": "Away +0.75 loses by one",
+      "official": { "selection": "AWAY", "line": "+0.75", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 1 },
+      "expected": { "components": [{ "line": "+0.50", "result": "LOSS" }, { "line": "+1.00", "result": "PUSH" }], "classification": "HALF_LOSS", "net_return": "-0.5", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-026",
+      "group": "quarter_line",
+      "title": "Away +0.75 loses by two",
+      "official": { "selection": "AWAY", "line": "+0.75", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 3, "away_score": 1 },
+      "expected": { "components": [{ "line": "+0.50", "result": "LOSS" }, { "line": "+1.00", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-027",
+      "group": "quarter_line",
+      "title": "Home -1.25 wins by two",
+      "official": { "selection": "HOME", "line": "-1.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 0 },
+      "expected": { "components": [{ "line": "-1.00", "result": "WIN" }, { "line": "-1.50", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-028",
+      "group": "quarter_line",
+      "title": "Home -1.25 wins by one",
+      "official": { "selection": "HOME", "line": "-1.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 0 },
+      "expected": { "components": [{ "line": "-1.00", "result": "PUSH" }, { "line": "-1.50", "result": "LOSS" }], "classification": "HALF_LOSS", "net_return": "-0.5", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-029",
+      "group": "quarter_line",
+      "title": "Home -1.25 draws",
+      "official": { "selection": "HOME", "line": "-1.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 1 },
+      "expected": { "components": [{ "line": "-1.00", "result": "LOSS" }, { "line": "-1.50", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-030",
+      "group": "quarter_line",
+      "title": "Away +1.25 draws",
+      "official": { "selection": "AWAY", "line": "+1.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 0, "away_score": 0 },
+      "expected": { "components": [{ "line": "+1.00", "result": "WIN" }, { "line": "+1.50", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-031",
+      "group": "quarter_line",
+      "title": "Away +1.25 loses by one",
+      "official": { "selection": "AWAY", "line": "+1.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 2, "away_score": 1 },
+      "expected": { "components": [{ "line": "+1.00", "result": "PUSH" }, { "line": "+1.50", "result": "WIN" }], "classification": "HALF_WIN", "net_return": "0.465", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-032",
+      "group": "quarter_line",
+      "title": "Away +1.25 loses by two",
+      "official": { "selection": "AWAY", "line": "+1.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "FINISHED", "home_score": 3, "away_score": 1 },
+      "expected": { "components": [{ "line": "+1.00", "result": "LOSS" }, { "line": "+1.50", "result": "LOSS" }], "classification": "LOSS", "net_return": "-1", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-033",
+      "group": "frozen_market",
+      "title": "Later line movement cannot change a draw settlement",
+      "official": { "selection": "HOME", "line": "-0.25", "normalized_decimal_price": "1.93" },
+      "later_market_ignored": { "line": "+0.25", "normalized_decimal_price": "2.06" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 1 },
+      "expected": { "components": [{ "line": "0.00", "result": "PUSH" }, { "line": "-0.50", "result": "LOSS" }], "classification": "HALF_LOSS", "net_return": "-0.5", "record_state": "SETTLED", "uses_only_official_market": true }
+    },
+    {
+      "id": "SET-PROP-034",
+      "group": "frozen_market",
+      "title": "Later price cannot change winning return",
+      "official": { "selection": "HOME", "line": "-0.25", "normalized_decimal_price": "1.93" },
+      "later_market_ignored": { "line": "-0.50", "normalized_decimal_price": "2.06" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 0 },
+      "expected": { "components": [{ "line": "0.00", "result": "WIN" }, { "line": "-0.50", "result": "WIN" }], "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED", "uses_only_official_market": true }
+    },
+    {
+      "id": "SET-PROP-035",
+      "group": "exact_price",
+      "title": "Half Win preserves the third decimal place",
+      "official": { "selection": "HOME", "line": "-0.75", "normalized_decimal_price": "1.01" },
+      "facts": { "match_status": "FINISHED", "home_score": 1, "away_score": 0 },
+      "expected": { "components": [{ "line": "-0.50", "result": "WIN" }, { "line": "-1.00", "result": "PUSH" }], "classification": "HALF_WIN", "net_return": "0.005", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-036",
+      "group": "exact_price",
+      "title": "Full Win uses frozen decimal price 2.06",
+      "official": { "selection": "HOME", "line": "-1.00", "normalized_decimal_price": "2.06" },
+      "facts": { "match_status": "FINISHED", "home_score": 3, "away_score": 1 },
+      "expected": { "components": [{ "line": "-1.00", "result": "WIN" }], "classification": "WIN", "net_return": "1.06", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-037",
+      "group": "postponed",
+      "title": "Same fixture starts one second inside 48 hours",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93", "frozen_scheduled_kickoff_at": "2026-09-01T12:00:00Z" },
+      "facts": { "initial_status": "POSTPONED", "actual_kickoff_at": "2026-09-03T11:59:59Z", "final_status": "FINISHED", "home_score": 1, "away_score": 0, "same_fixture_reviewed": true },
+      "expected": { "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-038",
+      "group": "postponed_boundary",
+      "title": "Same fixture starts exactly 48 hours later",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93", "frozen_scheduled_kickoff_at": "2026-09-01T12:00:00Z" },
+      "facts": { "initial_status": "POSTPONED", "actual_kickoff_at": "2026-09-03T12:00:00Z", "final_status": "FINISHED", "home_score": 1, "away_score": 0, "same_fixture_reviewed": true },
+      "expected": { "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED", "boundary_equality_inclusive": true }
+    },
+    {
+      "id": "SET-PROP-039",
+      "group": "postponed_boundary",
+      "title": "Same fixture starts one second outside 48 hours",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93", "frozen_scheduled_kickoff_at": "2026-09-01T12:00:00Z" },
+      "facts": { "initial_status": "POSTPONED", "actual_kickoff_at": "2026-09-03T12:00:01Z", "final_status": "FINISHED", "home_score": 1, "away_score": 0, "same_fixture_reviewed": true },
+      "expected": { "classification": "VOID", "net_return": "0", "record_state": "SETTLED" }
+    },
+    {
+      "id": "SET-PROP-040",
+      "group": "cancelled",
+      "title": "Reviewed cancellation is Void",
+      "official": { "selection": "AWAY", "line": "+0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "CANCELLED", "cancellation_reviewed": true },
+      "expected": { "classification": "VOID", "net_return": "0", "record_state": "SETTLED", "performance_n_included": false }
+    },
+    {
+      "id": "SET-PROP-041",
+      "group": "abandoned",
+      "title": "Competition adopts an abandoned score without regulation completion",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "ABANDONED_FINAL", "regulation_completed_at": null, "status_determined_at": "2026-09-02T08:00:00Z", "score_adopted_for_competition": { "home": 2, "away": 1 }, "official_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Formal competition decision" }] },
+      "expected": { "classification": "VOID", "net_return": "0", "record_state": "SETTLED", "competition_score_is_not_completed_regulation_time": true }
+    },
+    {
+      "id": "SET-PROP-042",
+      "group": "abandoned",
+      "title": "Abandoned fixture is replayed",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "REPLAYED_FROM_ZERO", "regulation_completed_at": null, "status_determined_at": "2026-09-02T08:00:00Z", "official_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Formal replay order" }] },
+      "expected": { "classification": "VOID", "net_return": "0", "record_state": "SETTLED", "replay_inherits_pick": false, "wait_until_evidence_deadline": false }
+    },
+    {
+      "id": "SET-PROP-043",
+      "group": "abandoned",
+      "title": "Conflicting high-authority evidence remains Pending before +168h",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "UNKNOWN", "status_determined_at": "2026-09-08T11:59:59Z", "official_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Official match centre says resumed" }, { "authority_tier": "COMPETITION_AUTHORITY", "label": "Formal bulletin says replayed" }] },
+      "expected": { "classification": null, "net_return": null, "record_state": "PENDING", "automatic_conflict_resolution_forbidden": true }
+    },
+    {
+      "id": "SET-PROP-044",
+      "group": "abandoned_boundary",
+      "title": "Continuity remains unproven at the +168h evidence deadline",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "UNKNOWN", "status_determined_at": "2026-09-08T12:00:00Z", "official_evidence_refs": [{ "authority_tier": "NON_AUTHORITATIVE", "label": "Ordinary score site" }] },
+      "expected": { "classification": "VOID", "net_return": "0", "record_state": "SETTLED", "evidence_deadline_only": true, "weak_source_cannot_establish_continuity": true }
+    },
+    {
+      "id": "SET-PROP-045",
+      "group": "correction_before_confirmation",
+      "title": "Correcting entered score invalidates old preview",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "entered_revision_1": { "home_score": 1, "away_score": 0 }, "corrected_revision_2": { "home_score": 0, "away_score": 0 }, "revision_1_confirmed": false },
+      "expected": { "record_state": "ENTERED", "current_preview_classification": "LOSS", "current_preview_net_return": "-1", "revision_1_preview_invalidated": true, "settled_record_created": false }
+    },
+    {
+      "id": "SET-PROP-046",
+      "group": "correction_after_settlement",
+      "title": "Post-settlement data-entry correction is append-only",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "settled_revision_1": { "settlement_id": "SET-SYNTH-046-R1", "home_score": 1, "away_score": 0, "classification": "WIN", "net_return": "0.93" }, "correction": { "settlement_revision": 2, "supersedes_settlement_id": "SET-SYNTH-046-R1", "correction_kind": "SOURCE_DATA_ERROR", "correction_reason": "Synthetic operator entered the away score incorrectly.", "corrected_at": "2026-09-02T12:00:00Z", "correction_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Official match report" }], "home_score": 0, "away_score": 0 } },
+      "expected": { "record_state": "SETTLED", "current_classification": "LOSS", "current_net_return": "-1", "previous_settlement_preserved": true, "replacement_marked_current": true, "affected_projection_rebuild_required": true }
+    },
+    {
+      "id": "SET-PROP-047",
+      "group": "correction_after_settlement",
+      "title": "Later disciplinary score change is appended without changing settlement",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "settled_revision_1": { "settlement_id": "SET-SYNTH-047-R1", "home_score": 2, "away_score": 1, "classification": "WIN", "net_return": "0.93" }, "correction": { "settlement_revision": 2, "supersedes_settlement_id": "SET-SYNTH-047-R1", "correction_kind": "ADMINISTRATIVE_RESULT_CHANGE", "correction_reason": "Synthetic later disciplinary decision changed the competition table score.", "corrected_at": "2026-09-08T12:00:00Z", "correction_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Formal disciplinary decision" }], "administrative_score": { "home": 0, "away": 3 } } },
+      "expected": { "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED", "uses_completed_regulation_score": true, "administrative_evidence_appended": true, "replacement_revision_marked_current": true, "settlement_values_changed": false }
+    },
+    {
+      "id": "SET-PROP-048",
+      "group": "abandoned_cancelled",
+      "title": "Competition cancels continuation at +20h",
+      "official": { "selection": "AWAY", "line": "+0.75", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "ABANDONED_FINAL", "regulation_completed_at": null, "status_determined_at": "2026-09-02T08:00:00Z", "official_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Official cancellation decision" }] },
+      "expected": { "classification": "VOID", "net_return": "0", "record_state": "SETTLED", "performance_n_included": false, "wait_until_evidence_deadline": false }
+    },
+    {
+      "id": "SET-PROP-049",
+      "group": "correction_after_settlement",
+      "title": "Settlement logic error is corrected without deleting the original",
+      "official": { "selection": "HOME", "line": "-0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "reviewed_score": { "home": 2, "away": 1 }, "settled_revision_1": { "settlement_id": "SET-SYNTH-049-R1", "classification": "LOSS", "net_return": "-1" }, "correction": { "settlement_revision": 2, "supersedes_settlement_id": "SET-SYNTH-049-R1", "correction_kind": "SETTLEMENT_LOGIC_ERROR", "correction_reason": "Synthetic quarter-line calculation defect.", "corrected_at": "2028-09-01T12:00:00Z", "correction_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Original official match report" }] } },
+      "expected": { "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED", "previous_settlement_preserved": true, "replacement_marked_current": true, "correction_time_limit_applied": false }
+    },
+    {
+      "id": "SET-PROP-050",
+      "group": "correction_after_settlement",
+      "title": "Official factual result correction changes the current settlement",
+      "official": { "selection": "HOME", "line": "-0.25", "normalized_decimal_price": "1.93" },
+      "facts": { "settled_revision_1": { "settlement_id": "SET-SYNTH-050-R1", "home_score": 1, "away_score": 1, "classification": "HALF_LOSS", "net_return": "-0.5" }, "correction": { "settlement_revision": 2, "supersedes_settlement_id": "SET-SYNTH-050-R1", "correction_kind": "OFFICIAL_RESULT_CORRECTION", "correction_reason": "Synthetic official match report corrected a factual scoring error.", "corrected_at": "2027-09-01T12:00:00Z", "correction_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Corrected official match report" }], "home_score": 2, "away_score": 1 } },
+      "expected": { "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED", "previous_settlement_preserved": true, "replacement_marked_current": true, "correction_time_limit_applied": false }
+    },
+    {
+      "id": "SET-PROP-051",
+      "group": "interrupted_continuity_boundary",
+      "title": "Same fixture completes regulation exactly at +48h",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "RESUMED_SAME_FIXTURE", "regulation_completed_at": "2026-09-03T12:00:00Z", "status_determined_at": "2026-09-04T00:00:00Z", "home_score": 2, "away_score": 1, "official_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Official competition match report" }] },
+      "expected": { "classification": "WIN", "net_return": "0.93", "record_state": "SETTLED", "completion_within_continuity_deadline": true, "boundary_equality_inclusive": true }
+    },
+    {
+      "id": "SET-PROP-052",
+      "group": "abandoned_authority_conflict_boundary",
+      "title": "Tier-1 conflict remains unresolved exactly at +168h",
+      "official": { "selection": "HOME", "line": "-0.50", "normalized_decimal_price": "1.93" },
+      "facts": { "match_status": "ABANDONED", "actual_kickoff_at": "2026-09-01T12:00:00Z", "interruption_disposition": "UNKNOWN", "status_determined_at": "2026-09-08T12:00:00Z", "official_evidence_refs": [{ "authority_tier": "COMPETITION_AUTHORITY", "label": "Official match centre says resumed" }, { "authority_tier": "COMPETITION_AUTHORITY", "label": "Formal bulletin says replayed" }] },
+      "expected": { "classification": "VOID", "net_return": "0", "record_state": "SETTLED", "evidence_deadline_reached": true, "tier_1_conflict_unresolved": true, "automatic_conflict_resolution_forbidden": true }
+    }
+  ]
+}

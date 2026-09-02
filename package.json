@@ -1,0 +1,18 @@
+{
+  "name": "pattern-xi-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "description": "Public prospective football pick ledger anchored by Git history and OpenTimestamps.",
+  "scripts": {
+    "test": "node --test \"tests/*.test.mjs\" \"tests/*.test.ts\"",
+    "validate": "node scripts/validate.mjs",
+    "settle": "node scripts/settle.mjs",
+    "standings": "node scripts/standings.mjs",
+    "manifest": "node scripts/manifest.mjs",
+    "build": "node scripts/build-site.mjs"
+  }
+}
