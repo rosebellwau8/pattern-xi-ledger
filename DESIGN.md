@@ -80,3 +80,5 @@ merge same checked version → formal main ledger → static Pages
 ## 6. Architecture freeze
 
 With the real GitHub PR, required check, merge, manifest/OTS workflow, settlement, standings and Pages deployment all verified, the architecture is frozen for 90-day public-validation preparation. During the freeze, no score-source verification, odds evidence, dynamic services, messaging channels or multi-operator signing will be added; bugs are fixed only in ways that keep the three-layer definitions consistent.
+
+Operator note (2026-09-02): a site-only newsletter signup slot was added to the public pages on explicit operator instruction — a provider-agnostic static HTML form (currently Buttondown's no-JavaScript embed endpoint) with privacy/consent wording beside it. It adds no backend, no client-side JavaScript and no payments; it is not a ledger input, introduces no dynamic service into this repository, and no evidence layer depends on it, so it sits outside the freeze's scope.
