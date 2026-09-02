@@ -15,14 +15,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
+
+      - name: Install locked development tooling
+        run: npm ci
+
+      - name: Type-check native TypeScript sources
+        run: npm run typecheck
 
       - name: Run tests (52-case golden settlement oracle + ledger rules)
         run: node --test "tests/*.test.mjs" "tests/*.test.ts"
@@ -30,7 +36,7 @@ jobs:
       - name: Validate all picks, results, and correction chains
         run: node scripts/validate.mjs
 
-      - name: Enforce append-only inputs and gate new picks at least 2 hours before kickoff
+      - name: Enforce append-only inputs, two-hour picks, and post-kickoff results
         if: github.event_name == 'pull_request'
         # The Actions runner clock is the server-side publication witness.
         run: node scripts/validate-pr.mjs "origin/${{ github.base_ref }}" HEAD

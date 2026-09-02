@@ -26,16 +26,16 @@
 |---|---|---|
 | 必须通过 PR | ✅ 开启 | 任何变更（包括文档）都不能直接 push 到 `main`，必须开 PR |
 | 必需人工批准数 | **0** | 单人维护：PR 评审由运营者自己把关；机器检查仍然全量强制（见下行） |
-| 必需状态检查 | `Ledger integrity`（严格模式） | 合并前 CI 必须通过且分支为最新：14 项测试、全量校验、PR 专属的开球前 ≥2 小时门控与追加式校验、派生文件一致性，全部不可绕过 |
+| 必需状态检查 | `Ledger integrity`（严格模式） | 合并前 CI 必须通过且分支为最新：全量测试、校验、PR 专属的开球前 ≥2 小时门控与追加式校验、派生文件一致性，全部不可绕过 |
 | 管理员同样受保护 | ✅ 开启 | 账本所有者也无法绕过 PR 流程直接改 `main`，堵住"内部人直接改账"的路 |
 | 强制推送（force push） | ❌ 禁止 | 不能重写 `main` 的历史，账本历史一经公布即不可篡改 |
 | 删除分支 | ❌ 禁止 | `main` 不能被删除 |
 
 ## CI 验证结果
 
-- **测试**：14 项全部通过（含 52 用例黄金结算数据集回归）。
+- **测试**：上线时 14 项全部通过；当前扩展为 29 项（含 52 用例黄金结算数据集、生产导入/发布、manifest 补漏和站点回归）。
 - **工作流**：Check（PR/push 完整性）、Deploy site（Pages 部署）、Anchor manifest（每日锚定）最终全绿。
-- **anchors 分支**：已创建并推送成功；每日 21:30 UTC（北京时间次日 05:30）自动运行 OpenTimestamps 锚定，回执写入该公开分支。
+- **anchors 分支**：已创建并推送成功。当前工作流每日 00:15 UTC 自动运行补漏式 OpenTimestamps 锚定，任何尚未进入旧清单的推介都会纳入下一批，回执写入该公开分支。
 - **追加式校验**：已公布的 `picks/` 与 `results/` JSON 一旦合并，任何修改、删除、重命名都会被 CI 拒绝（提交 `9711a19` 引入 `scripts/validate-pr.mjs`）。
 - **Pages 实测**：`/`、`/track-record.html`、`/verification.html` 三页均返回 HTTP 200。
 
@@ -46,9 +46,9 @@
 
 ## 日常运营流程（单人模式）
 
-1. **发推介（开球前 ≥2 小时）**：写 `picks/YYYY/<开球日期>-<队名slug>-ah.json` →
-   `npm run validate` → 开分支与 PR → CI 强制两小时门控与追加式校验 →
-   绿了自行合并（approval=0），即发布生效。
+1. **发推介（开球前 ≥2 小时）**：生产端导出 JSON → `npm run publish -- export.json` →
+   脚本自动建分支、导入、校验、推送和开公开 PR → CI 强制两小时门控与追加式校验 →
+   通过后 GitHub 自动合并（approval=0），即发布生效。
 2. **记结果（终场后）**：写 `results/YYYY/<id>.json`（只录比分/状态等事实）→
    `npm run validate && npm run settle && npm run standings` →
    派生的 `settlements/`、`standings/` 变更随同一个 PR 提交，评审时在 diff 里直接看到程序算出的结论。

@@ -9,11 +9,18 @@
   "description": "Public prospective football pick ledger anchored by Git history and OpenTimestamps.",
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\" \"tests/*.test.ts\"",
+    "typecheck": "tsc --project tsconfig.json",
     "validate": "node scripts/validate.mjs",
     "validate:pr": "node scripts/validate-pr.mjs",
+    "import": "node scripts/import-production.mjs",
+    "publish": "node scripts/publish-production.mjs",
     "settle": "node scripts/settle.mjs",
     "standings": "node scripts/standings.mjs",
     "manifest": "node scripts/manifest.mjs",
     "build": "node scripts/build-site.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "typescript": "7.0.2"
   }
 }
