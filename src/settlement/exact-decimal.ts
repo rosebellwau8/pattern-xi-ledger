@@ -10,8 +10,11 @@ function power10(value: number): bigint {
 }
 
 export class ExactDecimal {
-  private readonly coefficient: bigint;
-  private readonly scale: number;
+  // Read-only representation is public because the performance projection
+  // needs exact numerator/scale access for ratio formatting without converting
+  // through IEEE-754. Mutation remains impossible.
+  readonly coefficient: bigint;
+  readonly scale: number;
 
   private constructor(coefficient: bigint, scale: number) {
     let normalizedCoefficient = coefficient;

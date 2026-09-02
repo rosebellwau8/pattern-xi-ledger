@@ -4,7 +4,7 @@
 // tree stays clean.
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,7 +12,7 @@ import test from "node:test";
 import { LedgerError, loadPicks, loadResultChains, sha256File } from "../scripts/lib.mjs";
 import { runValidation } from "../scripts/validate.mjs";
 import { analyzeLedgerDiff } from "../scripts/validate-pr.mjs";
-import { buildSettlements } from "../scripts/settle.mjs";
+import { buildSettlements, main as writeSettlements } from "../scripts/settle.mjs";
 import { buildStandings } from "../scripts/standings.mjs";
 
 const TWO_HOURS = 2 * 60 * 60 * 1000;
@@ -117,6 +117,7 @@ test("pull request diffs allow new ledger inputs and reject mutation or deletion
     "",
   ].join("\n")), {
     gatePaths: ["picks/2026/2026-09-06-arsenal-chelsea-ah.json"],
+    resultGatePaths: ["results/2026/2026-09-06-arsenal-chelsea-ah.json"],
     problems: [],
   });
 
@@ -127,8 +128,28 @@ test("pull request diffs allow new ledger inputs and reject mutation or deletion
     "",
   ].join("\n"));
   assert.equal(rejected.gatePaths.length, 0);
+  assert.equal(rejected.resultGatePaths.length, 0);
   assert.equal(rejected.problems.length, 3);
   assert.match(rejected.problems[0], /append-only/u);
+});
+
+test("new result files cannot be published before kickoff", () => {
+  const root = makeLedger();
+  try {
+    writeJson(root, "picks/2026/2026-09-06-arsenal-chelsea-ah.json", samplePick());
+    writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.json",
+      { status: "PLAYED", home_score: 2, away_score: 1 });
+    const path = "results/2026/2026-09-06-arsenal-chelsea-ah.json";
+    const problems = runValidation(root, {
+      now: Date.parse("2026-09-06T16:29:59Z"), resultGatePaths: [path],
+    });
+    assert.match(problems[0], /may not be published before kickoff/u);
+    assert.deepEqual(runValidation(root, {
+      now: Date.parse("2026-09-06T16:30:00Z"), resultGatePaths: [path],
+    }), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 function writeResult(root, pickId, name, data) {
@@ -190,7 +211,15 @@ test("settlement, correction chain, and rebuildable standings work end to end", 
     // An append-only correction flips the Arsenal result; the chain root is
     // preserved and the projection must rebuild from the correction head.
     const correctionHash = writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.r2.json",
-      { status: "PLAYED", home_score: 1, away_score: 1, corrects: firstHash, note: "Official source corrected the final score." });
+      {
+        status: "PLAYED",
+        home_score: 1,
+        away_score: 1,
+        corrects: firstHash,
+        correction_kind: "OFFICIAL_RESULT_CORRECTION",
+        evidence_refs: ["https://premierleague.example/match/123"],
+        note: "Official source corrected the final score.",
+      });
     assert.notEqual(correctionHash, firstHash);
     assert.deepEqual(runValidation(root), []);
 
@@ -216,9 +245,15 @@ test("correction chains reject forks, unknown parents, and no-op corrections", (
       { status: "PLAYED", home_score: 2, away_score: 1 });
 
     writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.r2.json",
-      { status: "PLAYED", home_score: 1, away_score: 1, corrects: firstHash });
+      {
+        status: "PLAYED", home_score: 1, away_score: 1, corrects: firstHash,
+        correction_kind: "SOURCE_DATA_ERROR", evidence_refs: ["https://example.test/a"], note: "Corrected score.",
+      });
     writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.r3.json",
-      { status: "PLAYED", home_score: 3, away_score: 1, corrects: firstHash });
+      {
+        status: "PLAYED", home_score: 3, away_score: 1, corrects: firstHash,
+        correction_kind: "SOURCE_DATA_ERROR", evidence_refs: ["https://example.test/b"], note: "Alternative score.",
+      });
     const problems = runValidation(root);
     assert.equal(problems.length, 1);
     assert.match(problems[0], /not linked into the result chain/u);
@@ -232,12 +267,140 @@ test("correction chains reject forks, unknown parents, and no-op corrections", (
     const firstHash = writeResult(root2, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.json",
       { status: "PLAYED", home_score: 2, away_score: 1 });
     writeResult(root2, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.r2.json",
-      { status: "PLAYED", home_score: 2, away_score: 1, corrects: firstHash });
+      {
+        status: "PLAYED", home_score: 2, away_score: 1, corrects: firstHash,
+        correction_kind: "SOURCE_DATA_ERROR", evidence_refs: ["https://example.test/result"], note: "Checked again.",
+      });
     const problems = runValidation(root2);
     assert.equal(problems.length, 1);
-    assert.match(problems[0], /without changing any content/u);
+    assert.match(problems[0], /without changing any result facts/u);
   } finally {
     rmSync(root2, { recursive: true, force: true });
+  }
+});
+
+test("completed postponed and resumed abandoned fixtures settle end to end", () => {
+  const root = makeLedger();
+  try {
+    writeJson(root, "picks/2026/2026-09-06-arsenal-chelsea-ah.json", samplePick());
+
+    writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.json", {
+      status: "POSTPONED",
+      actual_kickoff_at: "2026-09-07T16:30:00Z",
+      final_status: "FINISHED",
+      home_score: 2,
+      away_score: 1,
+    });
+    assert.deepEqual(runValidation(root), []);
+    assert.equal(buildSettlements(root).settlements.get("2026-09-06-arsenal-chelsea-ah").current.classification, "HALF_WIN");
+
+    rmSync(join(root, "results"), { recursive: true, force: true });
+    mkdirSync(join(root, "results/2026"), { recursive: true });
+    writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.json", {
+      status: "ABANDONED",
+      actual_kickoff_at: "2026-09-06T16:30:00Z",
+      interruption_disposition: "RESUMED_SAME_FIXTURE",
+      regulation_completed_at: "2026-09-07T16:00:00Z",
+      home_score: 2,
+      away_score: 1,
+    });
+    assert.deepEqual(runValidation(root), []);
+    assert.equal(buildSettlements(root).settlements.get("2026-09-06-arsenal-chelsea-ah").current.classification, "HALF_WIN");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("corrections require reason, kind, evidence, factual change, and sequential names", () => {
+  const cases = [
+    {
+      name: "missing note",
+      suffix: "r2",
+      patch: { correction_kind: "SOURCE_DATA_ERROR", evidence_refs: ["https://example.test/result"] },
+      expected: /note must be a non-empty string/u,
+    },
+    {
+      name: "missing kind",
+      suffix: "r2",
+      patch: { note: "Corrected." },
+      expected: /correction_kind/u,
+    },
+    {
+      name: "missing evidence",
+      suffix: "r2",
+      patch: { correction_kind: "OFFICIAL_RESULT_CORRECTION", note: "Corrected." },
+      expected: /evidence_refs/u,
+    },
+    {
+      name: "note-only factual no-op",
+      suffix: "r2",
+      patch: {
+        correction_kind: "SOURCE_DATA_ERROR", evidence_refs: ["https://example.test/result"], note: "Different prose only.",
+      },
+      expected: /without changing any result facts/u,
+    },
+    {
+      name: "skipped revision number",
+      suffix: "r3",
+      patch: {
+        home_score: 1, correction_kind: "SOURCE_DATA_ERROR",
+        evidence_refs: ["https://example.test/result"], note: "Corrected score.",
+      },
+      expected: /must be .*\.r2\.json/u,
+    },
+  ];
+
+  for (const entry of cases) {
+    const root = makeLedger();
+    try {
+      writeJson(root, "picks/2026/2026-09-06-arsenal-chelsea-ah.json", samplePick());
+      const firstHash = writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.json",
+        { status: "PLAYED", home_score: 2, away_score: 1 });
+      writeResult(root, "2026-09-06-arsenal-chelsea-ah", `2026-09-06-arsenal-chelsea-ah.${entry.suffix}.json`, {
+        status: "PLAYED", home_score: 2, away_score: 1, corrects: firstHash, ...entry.patch,
+      });
+      assert.match(runValidation(root)[0], entry.expected, entry.name);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a correction may move a settled pick back to pending without breaking standings", () => {
+  const root = makeLedger();
+  try {
+    writeJson(root, "picks/2026/2026-09-06-arsenal-chelsea-ah.json", samplePick());
+    const firstHash = writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.json",
+      { status: "PLAYED", home_score: 2, away_score: 1 });
+    writeResult(root, "2026-09-06-arsenal-chelsea-ah", "2026-09-06-arsenal-chelsea-ah.r2.json", {
+      status: "POSTPONED",
+      status_determined_at: "2026-09-06T18:00:00Z",
+      corrects: firstHash,
+      correction_kind: "SOURCE_DATA_ERROR",
+      evidence_refs: ["https://example.test/fixture"],
+      note: "The match status was reported incorrectly.",
+    });
+
+    assert.deepEqual(runValidation(root), []);
+    const standings = buildStandings(root);
+    assert.equal(standings.n, 0);
+    assert.equal(standings.pending_count, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("settlement rebuild removes stale derived files", () => {
+  const root = makeLedger();
+  try {
+    mkdirSync(join(root, "settlements/2026"), { recursive: true });
+    writeFileSync(join(root, "settlements/2026/stale.json"), "{}\n");
+    buildSettlements(root);
+    // The pure builder is read-only; the CLI writer owns clean rebuild semantics.
+    writeSettlements(root);
+    assert.equal(existsSync(join(root, "settlements/2026/stale.json")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

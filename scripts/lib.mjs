@@ -30,6 +30,12 @@ const DISPOSITIONS = new Set([
   "ABANDONED_FINAL",
   "UNKNOWN",
 ]);
+const CORRECTION_KINDS = new Set([
+  "SOURCE_DATA_ERROR",
+  "SETTLEMENT_LOGIC_ERROR",
+  "OFFICIAL_RESULT_CORRECTION",
+  "ADMINISTRATIVE_RESULT_CHANGE",
+]);
 
 export class LedgerError extends Error {}
 
@@ -147,7 +153,7 @@ export function validateResultObject(data, label) {
   checkNoExtras(data, [
     "schema", "pick_id", "status", "home_score", "away_score", "final_status",
     "actual_kickoff_at", "regulation_completed_at", "status_determined_at",
-    "interruption_disposition", "corrects", "note",
+    "interruption_disposition", "corrects", "correction_kind", "evidence_refs", "note",
   ], label);
 
   const pickId = requireString(data, "pick_id", label);
@@ -156,12 +162,14 @@ export function validateResultObject(data, label) {
     fail(`${label}.status must be one of ${[...STATUSES].join(", ")}`);
   }
 
-  if (data.status === "PLAYED") {
+  const hasHomeScore = data.home_score !== undefined;
+  const hasAwayScore = data.away_score !== undefined;
+  if (hasHomeScore !== hasAwayScore) fail(`${label} must record home_score and away_score together`);
+  const hasScores = hasHomeScore && hasAwayScore;
+  if (hasScores) {
     for (const key of ["home_score", "away_score"]) {
-      if (!Number.isInteger(data[key]) || data[key] < 0) fail(`${label}.${key} must be a non-negative integer when status is PLAYED`);
+      if (!Number.isInteger(data[key]) || data[key] < 0) fail(`${label}.${key} must be a non-negative integer`);
     }
-  } else if (data.home_score !== undefined || data.away_score !== undefined) {
-    fail(`${label} may only record scores when status is PLAYED`);
   }
 
   if (data.final_status !== undefined) {
@@ -188,6 +196,27 @@ export function validateResultObject(data, label) {
     fail(`${label}.interruption_disposition is required when status is ABANDONED`);
   }
 
+  if (data.status === "PLAYED" && !hasScores) {
+    fail(`${label}.home_score and away_score are required when status is PLAYED`);
+  }
+  if (data.status === "POSTPONED") {
+    if (data.final_status === "FINISHED") {
+      if (data.actual_kickoff_at === undefined) fail(`${label}.actual_kickoff_at is required for a completed postponed match`);
+      if (!hasScores) fail(`${label}.home_score and away_score are required for a completed postponed match`);
+    } else if (hasScores) {
+      fail(`${label} may only record postponed scores when final_status is FINISHED`);
+    }
+  }
+  if (data.status === "ABANDONED") {
+    if (data.actual_kickoff_at === undefined) fail(`${label}.actual_kickoff_at is required when status is ABANDONED`);
+    if (data.interruption_disposition === "RESUMED_SAME_FIXTURE") {
+      if (!hasScores) fail(`${label}.home_score and away_score are required when an abandoned fixture resumes`);
+    } else if (hasScores) {
+      fail(`${label} may only record abandoned scores when the same fixture resumes`);
+    }
+  }
+  if (data.status === "CANCELLED" && hasScores) fail(`${label} may not record scores when status is CANCELLED`);
+
   if (data.status === "POSTPONED" && data.actual_kickoff_at === undefined
     && data.final_status === undefined && data.status_determined_at === undefined) {
     fail(`${label}.status_determined_at is required for a postponed match without a new kickoff`);
@@ -197,6 +226,22 @@ export function validateResultObject(data, label) {
     if (typeof data.corrects !== "string" || SHA256.exec(data.corrects) === null) {
       fail(`${label}.corrects must be a lowercase sha256 hex string`);
     }
+    if (typeof data.note !== "string" || data.note.trim() === "") {
+      fail(`${label}.note must be a non-empty string for a correction`);
+    }
+    if (!CORRECTION_KINDS.has(data.correction_kind)) {
+      fail(`${label}.correction_kind must be one of ${[...CORRECTION_KINDS].join(", ")}`);
+    }
+    if (data.evidence_refs !== undefined && (!Array.isArray(data.evidence_refs)
+      || data.evidence_refs.some((value) => typeof value !== "string" || value.trim() === ""))) {
+      fail(`${label}.evidence_refs must be an array of non-empty strings`);
+    }
+    if (data.correction_kind !== "SETTLEMENT_LOGIC_ERROR"
+      && (!Array.isArray(data.evidence_refs) || data.evidence_refs.length === 0)) {
+      fail(`${label}.evidence_refs must contain at least one source for ${data.correction_kind}`);
+    }
+  } else if (data.correction_kind !== undefined || data.evidence_refs !== undefined) {
+    fail(`${label}.correction_kind and evidence_refs are only valid with corrects`);
   }
   if (data.note !== undefined && typeof data.note !== "string") fail(`${label}.note must be a string`);
 
@@ -316,14 +361,23 @@ export function loadResultChains(root, picks) {
       if (next.pickId !== pickId) {
         fail(`${next.relativePath} corrects a file of pick ${pickId} but declares pick ${next.pickId}`);
       }
+      const expectedName = `results/${pickId.slice(0, 4)}/${pickId}.r${chain.length + 1}.json`;
+      if (next.relativePath !== expectedName) {
+        fail(`revision ${chain.length + 1} for ${pickId} must be ${expectedName}, found ${next.relativePath}`);
+      }
       if (correctedHashes.has(current.hash)) fail(`result chain for ${pickId} forks at ${current.relativePath}`);
       correctedHashes.add(current.hash);
       const parentContent = { ...current.data };
-      delete parentContent.corrects;
       const childContent = { ...next.data };
-      delete childContent.corrects;
-      if (JSON.stringify(parentContent) === JSON.stringify(childContent)) {
-        fail(`${next.relativePath} corrects ${current.relativePath} without changing any content`);
+      for (const content of [parentContent, childContent]) {
+        delete content.corrects;
+        delete content.correction_kind;
+        delete content.evidence_refs;
+        delete content.note;
+      }
+      if (JSON.stringify(parentContent) === JSON.stringify(childContent)
+        && next.data.correction_kind !== "SETTLEMENT_LOGIC_ERROR") {
+        fail(`${next.relativePath} corrects ${current.relativePath} without changing any result facts`);
       }
       chain.push(next);
       current = next;
@@ -366,6 +420,8 @@ export function factsForResult(data) {
         match_status: "ABANDONED",
         actual_kickoff_at: data.actual_kickoff_at,
         interruption_disposition: data.interruption_disposition,
+        ...(data.home_score !== undefined ? { home_score: data.home_score } : {}),
+        ...(data.away_score !== undefined ? { away_score: data.away_score } : {}),
         ...(data.regulation_completed_at !== undefined ? { regulation_completed_at: data.regulation_completed_at } : {}),
         ...(data.status_determined_at !== undefined ? { status_determined_at: data.status_determined_at } : {}),
       };
@@ -420,6 +476,20 @@ export function validateLedger(root, options = {}) {
             `${gatePath} must be published at least 2 hours before kickoff; ` +
             `${Math.floor(remaining / 60000)} minutes remain`,
           );
+        }
+      });
+    }
+  }
+  if (options.resultGatePaths !== undefined && options.resultGatePaths.length > 0) {
+    const now = options.now ?? Date.now();
+    for (const resultPath of options.resultGatePaths) {
+      collect(() => {
+        const { data } = readJson(join(root, resultPath), resultPath);
+        const info = validateResultObject(data, resultPath);
+        const pick = picks.get(info.pickId);
+        if (pick === undefined) throw new LedgerError(`${resultPath} references unknown pick ${info.pickId}`);
+        if (now < pick.kickoffEpoch) {
+          throw new LedgerError(`${resultPath} may not be published before kickoff ${pick.kickoffUtc}`);
         }
       });
     }

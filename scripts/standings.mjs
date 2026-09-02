@@ -15,15 +15,15 @@ export function buildStandings(root) {
   const projectionInput = [];
   for (const [pickId, pick] of picks) {
     const record = settlements.get(pickId);
-    const settledRevisions = (record?.revisions ?? [])
-      .filter((revision) => revision.result.record_state === "SETTLED")
-      .map((revision) => ({
+    const head = record?.current;
+    const settledRevisions = head?.record_state === "SETTLED"
+      ? (record?.revisions ?? []).filter((revision) => revision.result.record_state === "SETTLED").map((revision) => ({
         settlement_id: revision.result_file_sha256,
         revision: revision.revision,
         classification: revision.result.classification,
         net_return: revision.result.net_return,
-      }));
-    const head = record?.current;
+      }))
+      : [];
     projectionInput.push({
       pick_id: pickId,
       kickoff_utc: pick.kickoffUtc,

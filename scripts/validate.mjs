@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // Validates every pick and result file, correction chains, and — with
 // --gate — the publication rule for newly added pick files: a pick must be
-// committed at least 2 hours before kickoff. The gate compares against the
-// machine clock; on GitHub Actions that clock is the platform's.
+// visible in the public PR at least 2 hours before kickoff. The gate compares
+// against the machine clock; on GitHub Actions that clock is the platform's.
 
 import { join } from "node:path";
 
 import { isMainScript, REPO_ROOT, validateLedger } from "./lib.mjs";
 
-export function runValidation(root, { gatePaths = [], now } = {}) {
-  return validateLedger(root, { gatePaths, now });
+export function runValidation(root, { gatePaths = [], resultGatePaths = [], now } = {}) {
+  return validateLedger(root, { gatePaths, resultGatePaths, now });
 }
 
 function main() {

@@ -5,7 +5,7 @@
 // so reviewers see the computed outcome in the PR diff, and CI enforces that
 // they are current (rebuild must be a no-op).
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -46,8 +46,10 @@ export function buildSettlements(root) {
 
 export function main(root = REPO_ROOT) {
   const { settlements } = buildSettlements(root);
+  const settlementsRoot = join(root, "settlements");
+  rmSync(settlementsRoot, { recursive: true, force: true });
   for (const [pickId, record] of settlements) {
-    const dir = join(root, "settlements", pickId.slice(0, 4));
+    const dir = join(settlementsRoot, pickId.slice(0, 4));
     mkdirSync(dir, { recursive: true });
     const file = join(dir, `${pickId}.json`);
     writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);

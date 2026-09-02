@@ -8,6 +8,7 @@ import { isMainScript, REPO_ROOT, validateLedger } from "./lib.mjs";
 
 export function analyzeLedgerDiff(output) {
   const gatePaths = [];
+  const resultGatePaths = [];
   const problems = [];
 
   for (const line of output.split("\n")) {
@@ -28,10 +29,11 @@ export function analyzeLedgerDiff(output) {
     for (const path of jsonPaths) {
       const normalized = path.replaceAll("\\", "/");
       if (normalized.startsWith("picks/")) gatePaths.push(normalized);
+      if (normalized.startsWith("results/")) resultGatePaths.push(normalized);
     }
   }
 
-  return { gatePaths, problems };
+  return { gatePaths, resultGatePaths, problems };
 }
 
 export function validatePullRequest(root, base, head = "HEAD", now) {
@@ -43,7 +45,11 @@ export function validatePullRequest(root, base, head = "HEAD", now) {
   const analyzed = analyzeLedgerDiff(output);
   return [
     ...analyzed.problems,
-    ...validateLedger(root, { gatePaths: analyzed.gatePaths, now }),
+    ...validateLedger(root, {
+      gatePaths: analyzed.gatePaths,
+      resultGatePaths: analyzed.resultGatePaths,
+      now,
+    }),
   ];
 }
 
