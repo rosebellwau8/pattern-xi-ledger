@@ -24,7 +24,7 @@ Task 9 运维与清单、Task 10 Assume-Breach + Shadow Run）。
 
 | 需要证明 | 本账本的机制 | 原项目的机制 |
 |---|---|---|
-| 推介在开球前存在 | Git commit（GitHub 服务器时间戳）+ PR CI 服务器时钟执行 ≥2h 规则 + OTS 比特币锚定 | 签名包 + 上传接收（部署后仍需信任平台自身时钟与运维） |
+| 推介在开球前存在 | 公开 PR 内容 + PR CI 服务器时钟执行 ≥2h 规则 + OTS 比特币锚定；不把可自行设置的 Git commit 时间当服务器时间 | 签名包 + 上传接收（部署后仍需信任平台自身时钟与运维） |
 | 记录未被事后篡改 | Git 历史 + 追加式修正链（`corrects` = 被改文件 SHA-256） | PostgreSQL 不可变记录 + 修正 API |
 | 结算不偏袒 | 冻结引擎 + 52 用例黄金数据集 CI 回归；结果文件无结论字段 | 同一套引擎（本账本逐字移植） |
 | 战绩可复核 | `settle && standings && git diff --exit-code`，任何人一条命令重建 | rebuildable projection（同一套数学） |
@@ -37,14 +37,14 @@ Task 9 运维与清单、Task 10 Assume-Breach + Shadow Run）。
 ## 3. 架构
 
 ```text
-写推介 ──► PR（validate --gate: CI 服务器时钟强制 ≥2h）──► merge = 公布
+生产导出 ─► import ─► 公开 PR（CI 服务器时钟强制 ≥2h）──► merge = 入账/上站
                                                               │
                      ┌────────────────────────────────────────┘
                      ▼
-      GitHub 服务器时间戳（推送时刻，不可回填）
+      公开 PR + Ledger integrity 检查运行时间
                      │
                      ▼  每日 CI
-      manifest.mjs：当日推介 SHA-256 + 前日清单哈希（哈希链）
+      manifest.mjs：所有尚未锚定推介 SHA-256 + 前次清单哈希（补漏哈希链）
                      │
                      ▼
       ots stamp → OpenTimestamps → 比特币区块（回执写入公开 anchors 分支）

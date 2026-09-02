@@ -7,8 +7,8 @@
 
 每一条推介都要回答同一个怀疑：「你怎么证明结果是出来之前就发了？」本账本用三重独立锚定回答：
 
-1. **Git commit（GitHub 服务器时间戳）**——推介在开球前至少 2 小时以 commit 形式公布，推送时刻由 GitHub 记录，本地无法回填；
-2. **每日 manifest + OpenTimestamps**——CI 每天把当日所有推介文件的 SHA-256 清单锚定到比特币区块链（`ots verify` 永久可验，无需信任任何运营方）；回执保存在公开 `anchors` 分支，清单之间首尾哈希相连形成链；
+1. **公开 PR + GitHub Actions 服务器时钟**——推介文件在公开 PR 中出现时，CI 以运行器时钟强制检查距开球至少 2 小时；Git commit 自带时间不是服务器见证，不作为门控依据；
+2. **补漏 manifest + OpenTimestamps**——CI 每晚把所有尚未入清单的推介文件 SHA-256 锚定到比特币区块链；延迟运行会在下一批自动补齐，回执保存在公开 `anchors` 分支，清单首尾相连；
 3. **追加式修正链**——结果文件只追加、永不覆盖；修正文件必须携带被修正文件的 SHA-256（`corrects` 字段），任何改动在 Git 历史里可见。
 
 结算分类和净收益**永远由程序计算**（52 用例黄金数据集回归保护），结果文件只能录入事实（比分、状态），写不了结论。
@@ -18,8 +18,9 @@
 ```bash
 git clone <本仓库地址> && cd pattern-xi-ledger
 
-# 1. 任选一条推介，查看首次提交时间（GitHub 服务器时间戳）
-git log --diff-filter=A -- picks/2026/<推介文件>.json
+# 1. 找到引入推介的 commit，再查看公开 PR 的 Ledger integrity 运行时间
+git log --diff-filter=A --format=%H -- picks/2026/<推介文件>.json
+gh run list --commit <commit-sha> --workflow Check
 
 # 2. 切到公开锚定分支，核对文件哈希与当日清单一致
 git switch anchors
@@ -38,35 +39,43 @@ node scripts/settle.mjs && node scripts/standings.mjs && git diff --exit-code
 picks/YYYY/<id>.json        推介（开球前提交；id 以开球 UTC 日期开头）
 results/YYYY/<id>.json      结果（终场后追加；修正为 <id>.rN.json + corrects 链）
 settlements/YYYY/<id>.json  派生文件：结算明细（程序生成，提交备查，CI 强制保持最新）
-manifests/YYYY-MM-DD.txt    anchors 分支：每日推介哈希 + 前次清单哈希（哈希链）
+manifests/YYYY-MM-DD.txt    anchors 分支：尚未锚定的推介哈希 + 前次清单哈希
 manifests/*.ots             anchors 分支：OpenTimestamps 比特币锚定回执
 standings/standings.json    派生文件：战绩投影（程序生成，可随时删除重建）
 src/settlement/             结算引擎（自 Pattern XI Task 6 逐字移植，52 用例黄金数据集保护）
 src/performance/            战绩投影（自 Pattern XI Task 7 移植，精确十进制、零起点最大回撤）
-scripts/                    validate / settle / standings / manifest / build-site
+scripts/                    import / validate / settle / standings / manifest / build-site
 tests/                      黄金数据集回归 + 账本规则测试
 site-dist/                  静态站构建产物（gitignore，部署时生成）
 ```
 
-## 常用命令（Node ≥ 24，零依赖）
+## 常用命令（Node ≥ 24，零运行时依赖）
 
 ```bash
 npm test                    # 52 用例黄金数据集 + 账本规则测试
+npm run typecheck           # TypeScript 严格静态检查
+npm run import -- export.json # 从生产端 v1 JSON 提取合规的公开推介
+npm run import -- --dry-run export.json # 仅预览，不写文件
+npm run publish -- export.json # 一键建分支、导入、开 PR，并在 CI 通过后自动合并
 npm run validate            # 校验全部数据与修正链（CI 对新推介强制 ≥2 小时规则）
 npm run settle              # 从推介+结果重算结算（派生文件）
 npm run standings           # 重建战绩投影（派生文件）
-npm run manifest            # 生成今日清单（无当日推介则跳过）
+npm run manifest            # 为所有尚未锚定的推介生成补漏清单
 npm run build               # 生成静态站 site-dist/
 ```
 
 ## 运营流程
 
-**发推介（开球前 ≥2 小时）**：写 `picks/YYYY/<开球日期>-<主客队名>-ah.json` →
-`npm run validate` → PR 合并。CI 用 GitHub 服务器时钟强制 2 小时规则，并拒绝修改或删除已公布的 pick/result JSON。
+**发推介（开球前 ≥2 小时）**：生产端导出 `production-public-export.v1` →
+`npm run publish -- export.json`。该命令会建分支、导入、校验、重建派生文件、推送并开公开 PR，
+随后等待必需检查通过自动合并。导入器会移除排名、模式和内部备注，
+只保留比赛身份、最终方向、盘口、赔率与来源；导出时不足两小时的场次会明确跳过。CI 以公开 PR
+检查时的 GitHub 服务器时钟再次强制门控，并拒绝修改或删除已公布的 pick/result JSON。
 
 **记结果（终场后）**：写 `results/YYYY/<id>.json`（只写比分/状态等事实）→
 `npm run validate && npm run settle && npm run standings` → 把派生的
 `settlements/`、`standings/` 变更一起提交进同一个 PR，评审人能在 diff 里直接看到程序算出的结论。
+CI 会拒绝在开球前新增结果文件。
 
 **修正（发现错误时）**：新增 `<id>.r2.json`，`corrects` 填被修正文件的 SHA-256，
 绝不改动旧文件。四类修正语义与证据要求见 [CONVENTIONS.md](CONVENTIONS.md)。
@@ -84,7 +93,7 @@ gh repo create pattern-xi-ledger --public --source=. --push
 
 # 3. 分支保护（Settings → Branches → main）：
 #    - Require a pull request before merging
-#    - Require 1 approval（必须由另一位有权限的协作者批准）
+#    - Required approvals: 0（单人维护；有第二位协作者后再改为 1）
 #    - 勾选包括 Require status checks: Check / Ledger integrity
 ```
 
@@ -92,7 +101,8 @@ gh repo create pattern-xi-ledger --public --source=. --push
 
 ## 诚实的局限
 
-账本证明的是「推介内容在开球前已存在」。**赔率是运营者申报的**（来源字段必填），
+账本证明的是「推介内容在公开 PR 检查时已存在且当时距开球至少两小时」，合并后内容保持追加式。
+**赔率是运营者申报的**（来源字段必填），
 建议对赔率页面另存第三方快照（如 archive.org Save Page Now）作旁证。
 这两个问题没有免费的完美解，任何系统（包括更复杂的系统）都一样。
 

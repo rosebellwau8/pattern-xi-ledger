@@ -5,8 +5,9 @@
 
 ## 1. 发布规则
 
-- 每条推介在**开球前至少 2 小时**以 PR 合并进 `main`；CI 用 GitHub Actions
-  服务器时钟对新推介文件强制执行（PR 门控脚本 `validate-pr.mjs`，复用 `validate.mjs --gate` 逻辑）。
+- 每条推介必须在**开球前至少 2 小时**出现在公开 PR；CI 用 GitHub Actions
+  服务器时钟对新推介文件强制执行（PR 门控脚本 `validate-pr.mjs` 复用账本校验逻辑）。
+  这个公开 PR 与对应检查运行是发布时间见证；合并进 `main` 后才进入正式账本和静态站。
 - 已合并的 `picks/**/*.json` 与 `results/**/*.json` 不得修改、删除或重命名；CI 对 PR diff
   强制执行追加式约束。结果错误只能新增 `.rN.json` 修正文件。
 - **全量公布义务**：所有实际下注或推荐的推介都必须入账，不允许选择性公布。
@@ -36,15 +37,16 @@
 | status | 必填 | 引擎行为 |
 |---|---|---|
 | `PLAYED` | `home_score`、`away_score` | 正常结算；若 `actual_kickoff_at` 比冻结开球时间晚超 48h 判 VOID |
-| `POSTPONED` | 有新开球：`actual_kickoff_at`（+完赛比分则结算）；无新开球：`status_determined_at` | 超 48h VOID，否则 PENDING |
+| `POSTPONED` | 有新开球：`actual_kickoff_at`；完赛时另填 `final_status: "FINISHED"` 与比分；无新开球：`status_determined_at` | 超 48h VOID，否则 PENDING；48h 内完赛正常结算 |
 | `CANCELLED` | — | 直接 VOID |
-| `ABANDONED` | `interruption_disposition`；`RESUMED_SAME_FIXTURE` 需 `regulation_completed_at`；`UNKNOWN` 需 `status_determined_at` | 同场 48h 内完赛可结算；重赛/弃赛 VOID；UNKNOWN 超 168h VOID |
+| `ABANDONED` | `actual_kickoff_at`、`interruption_disposition`；`RESUMED_SAME_FIXTURE` 另需 `regulation_completed_at` 与比分；`UNKNOWN` 需 `status_determined_at` | 同场 48h 内完赛可结算；重赛/弃赛 VOID；UNKNOWN 超 168h VOID |
 
 ## 4. 修正规则（追加式，永不覆盖）
 
 - 结果只追加：修正写入新文件 `results/<年>/<id>.rN.json`（N 顺延），
   `corrects` 字段填**被修正文件的精确 SHA-256**；脚本拒绝断链、分叉、空修正。
-- 修正必须注明理由（`note`），并符合四类语义之一（沿袭 Settlement Rules v1）：
+- 修正必须注明非空理由（`note`）与 `correction_kind`，并符合四类语义之一（沿袭 Settlement Rules v1）。
+  除 `SETTLEMENT_LOGIC_ERROR` 外，还必须提供至少一个 `evidence_refs` 来源：
   1. `SOURCE_DATA_ERROR` — 比分源录错（需更权威来源的比分，附证据说明）；
   2. `SETTLEMENT_LOGIC_ERROR` — 引擎/规则应用错误（需给出正确比分重算）；
   3. `OFFICIAL_RESULT_CORRECTION` — 官方改判比分（证据等级：
@@ -64,5 +66,5 @@
 ## 6. 派生文件纪律
 
 `settlements/` 与 `standings/` 是派生文件：必须与原始数据保持一致
-（CI 重建后 `git diff --exit-code`），记录结果的 PR 必须把派生变更一并提交，
+（`settle.mjs` 会先清空旧结算再完整重建，CI 随后执行 `git diff --exit-code`），记录结果的 PR 必须把派生变更一并提交，
 让评审人在 diff 里直接看到程序算出的结论。怀疑数字有问题？删掉重跑即可。
