@@ -1,112 +1,108 @@
-# Pattern XI 公开推介账本
+# Pattern XI — Public Picks Ledger
 
-一个公开、前瞻、可审计的足球亚盘推介记录账本。
-没有数据库、没有后台、没有签名服务器——**Git 历史就是账本，第三方时间戳就是公证人**。
+A public, prospective, auditable ledger of football Asian-handicap picks. No database, no back office, no dynamic services; the static site is just a view over the public Git ledger.
 
-## 信任故事
+## Three-layer evidence model
 
-每一条推介都要回答同一个怀疑：「你怎么证明结果是出来之前就发了？」本账本用三重独立锚定回答：
+1. **Public publication witness**
+   - The exact version of a pick first appears in a public GitHub PR;
+   - GitHub Actions' `Ledger integrity` runs against that PR's exact head SHA and file contents;
+   - publication time is defined as the GitHub server-side `startedAt` of the first job attempt in which that exact SHA passed the check;
+   - that time must be at least 2 hours before `kickoff_utc`. If the pick is modified, its SHA changes and it must be checked again;
+   - merging only admits the same, already-public, already-verified version into the official ledger; it does not define first publication.
 
-1. **公开 PR + GitHub Actions 服务器时钟**——推介文件在公开 PR 中出现时，CI 以运行器时钟强制检查距开球至少 2 小时；Git commit 自带时间不是服务器见证，不作为门控依据；
-2. **补漏 manifest + OpenTimestamps**——CI 每晚把所有尚未入清单的推介文件 SHA-256 锚定到比特币区块链；延迟运行会在下一批自动补齐，回执保存在公开 `anchors` 分支，清单首尾相连；
-3. **追加式修正链**——结果文件只追加、永不覆盖；修正文件必须携带被修正文件的 SHA-256（`corrects` 字段），任何改动在 Git 历史里可见。
+2. **Independent cryptographic timestamp**
+   - Every manifest records the corresponding `main` commit SHA, the SHA-256 of the previous manifest, and the paths and SHA-256 hashes of all official pick files in that `main` state;
+   - OpenTimestamps anchors this complete ledger-state snapshot to Bitcoin;
+   - it proves that the complete state existed before a given Bitcoin time anchor, and provides an independent record for detecting later history alterations;
+   - it is the second cryptographic anchor, not the primary source of the per-pick two-hours-before-kickoff proof.
 
-结算分类和净收益**永远由程序计算**（52 用例黄金数据集回归保护），结果文件只能录入事实（比分、状态），写不了结论。
+3. **Append-only correction provenance**
+   - Published pick/result files must never be overwritten, deleted or renamed;
+   - result corrections are appended as `.rN.json`, with `corrects` citing the exact-byte SHA-256 of the previous version;
+   - correction chains must be linear, unforked, and must actually change facts;
+   - settlements and standings are always rebuilt deterministically from raw facts by programs, with settlement semantics guarded by the 52-case golden dataset.
 
-## 五分钟自行验证
+Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests provide an independent cryptographic record of previously published ledger states.
+
+Git history, branch protection and append-only validation sharply raise the cost and visibility of after-the-fact changes, but the repository owner still theoretically controls the GitHub configuration, so GitHub history is not described as cryptographically absolutely tamper-proof. Ordinary Git author/committer timestamps are locally settable Git metadata and carry no publication proof.
+
+## Verify it yourself in five minutes
 
 ```bash
-git clone <本仓库地址> && cd pattern-xi-ledger
+git clone https://github.com/rosebellwau8/pattern-xi-ledger.git && cd pattern-xi-ledger
 
-# 1. 找到引入推介的 commit，再查看公开 PR 的 Ledger integrity 运行时间
-git log --diff-filter=A --format=%H -- picks/2026/<推介文件>.json
-gh run list --commit <commit-sha> --workflow Check
+# 1. Find the PR head SHA that introduced the pick
+git log --all --diff-filter=A --format=%H -- picks/2026/<pick-file>.json
 
-# 2. 切到公开锚定分支，核对文件哈希与当日清单一致
+# 2. Find the earliest successful public PR check for that SHA and read Ledger integrity.startedAt
+gh run list --event pull_request --commit <head-sha> --workflow Check --status success \
+  --json databaseId,headSha,event,conclusion,url
+gh run view <run-id> --json headSha,jobs
+
+# 3. Check the full ledger-state manifest and its Bitcoin timestamp
 git switch anchors
-sha256sum picks/2026/<推介文件>.json && cat manifests/<日期>.txt
+cat manifests/<date>.txt
+git show <main-commit-sha>:picks/2026/<pick-file>.json | sha256sum
+ots verify manifests/<date>.txt.ots
 
-# 3. 验证清单的比特币时间戳（pip install opentimestamps-client 后）
-ots verify manifests/<日期>.txt.ots
-
-# 4. 从原始数据重建全部战绩，应无任何差异
+# 4. Rebuild the entire record from raw facts; there must be no diff
 node scripts/settle.mjs && node scripts/standings.mjs && git diff --exit-code
 ```
 
-## 目录结构
+Step 1 yields a content-version identifier, not a trusted time; the trusted first-layer time witness comes from the GitHub-hosted Actions job event of the public PR in step 2.
+
+## Repository layout
 
 ```text
-picks/YYYY/<id>.json        推介（开球前提交；id 以开球 UTC 日期开头）
-results/YYYY/<id>.json      结果（终场后追加；修正为 <id>.rN.json + corrects 链）
-settlements/YYYY/<id>.json  派生文件：结算明细（程序生成，提交备查，CI 强制保持最新）
-manifests/YYYY-MM-DD.txt    anchors 分支：尚未锚定的推介哈希 + 前次清单哈希
-manifests/*.ots             anchors 分支：OpenTimestamps 比特币锚定回执
-standings/standings.json    派生文件：战绩投影（程序生成，可随时删除重建）
-src/settlement/             结算引擎（自 Pattern XI Task 6 逐字移植，52 用例黄金数据集保护）
-src/performance/            战绩投影（自 Pattern XI Task 7 移植，精确十进制、零起点最大回撤）
+picks/YYYY/<id>.json        Picks (id starts with the kickoff UTC date)
+results/YYYY/<id>.json      Results (appended after full time; corrections as <id>.rN.json + corrects chain)
+settlements/YYYY/<id>.json  Derived settlement details (generated; CI enforces freshness)
+manifests/YYYY-MM-DD.txt    anchors branch: complete pick ledger snapshot + main SHA + previous manifest hash
+manifests/*.ots             anchors branch: OpenTimestamps Bitcoin anchoring receipts
+standings/standings.json    Derived standings projection (generated, rebuildable)
+src/settlement/             Settlement engine (52-case golden dataset)
+src/performance/            Standings projection (exact decimal)
 scripts/                    import / validate / settle / standings / manifest / build-site
-tests/                      黄金数据集回归 + 账本规则测试
-site-dist/                  静态站构建产物（gitignore，部署时生成）
+tests/                      Golden dataset, ledger rules, evidence model and site regressions
+site-dist/                  Static site build output (gitignored, generated at deploy time)
 ```
 
-## 常用命令（Node ≥ 24，零运行时依赖）
+## Everyday commands (Node ≥ 24, zero runtime dependencies)
 
 ```bash
-npm test                    # 52 用例黄金数据集 + 账本规则测试
-npm run typecheck           # TypeScript 严格静态检查
-npm run import -- export.json # 从生产端 v1 JSON 提取合规的公开推介
-npm run import -- --dry-run export.json # 仅预览，不写文件
-npm run publish -- export.json # 一键建分支、导入、开 PR，并在 CI 通过后自动合并
-npm run validate            # 校验全部数据与修正链（CI 对新推介强制 ≥2 小时规则）
-npm run settle              # 从推介+结果重算结算（派生文件）
-npm run standings           # 重建战绩投影（派生文件）
-npm run manifest            # 为所有尚未锚定的推介生成补漏清单
-npm run build               # 生成静态站 site-dist/
+npm test
+npm run typecheck
+npm run import -- export.json
+npm run import -- --dry-run export.json
+npm run publish -- export.json
+npm run validate
+npm run settle
+npm run standings
+npm run manifest -- <UTC-date> <main-commit-sha>
+npm run build
 ```
 
-## 运营流程
+## Operating procedures
 
-**发推介（开球前 ≥2 小时）**：生产端导出 `production-public-export.v1` →
-`npm run publish -- export.json`。该命令会建分支、导入、校验、重建派生文件、推送并开公开 PR，
-随后等待必需检查通过自动合并。导入器会移除排名、模式和内部备注，
-只保留比赛身份、最终方向、盘口、赔率与来源；导出时不足两小时的场次会明确跳过。CI 以公开 PR
-检查时的 GitHub 服务器时钟再次强制门控，并拒绝修改或删除已公布的 pick/result JSON。
+**Publishing a pick**: export `production-public-export.v1` on the production side → `npm run publish -- export.json`. The script creates a branch, extracts the final direction/line/price, validates, rebuilds derived files, pushes and opens a public PR. Fixtures under two hours away at export time are skipped up front; the remote `Ledger integrity` then checks the exact PR head SHA against the GitHub server-side event time of that job attempt. The merged version must be identical to the version that passed the check; only after merging does a pick enter the official ledger and the static site.
 
-**记结果（终场后）**：写 `results/YYYY/<id>.json`（只写比分/状态等事实）→
-`npm run validate && npm run settle && npm run standings` → 把派生的
-`settlements/`、`standings/` 变更一起提交进同一个 PR，评审人能在 diff 里直接看到程序算出的结论。
-CI 会拒绝在开球前新增结果文件。
+**Recording a result**: after full time, add `results/YYYY/<id>.json` (facts only — scores, statuses) → `npm run validate && npm run settle && npm run standings` → put the derived `settlements/` and `standings/` changes into the same PR. CI rejects results added before kickoff.
 
-**修正（发现错误时）**：新增 `<id>.r2.json`，`corrects` 填被修正文件的 SHA-256，
-绝不改动旧文件。四类修正语义与证据要求见 [CONVENTIONS.md](CONVENTIONS.md)。
+**Correcting**: add `<id>.rN.json` with `corrects` set to the previous version file's exact SHA-256; never overwrite the old file. Detailed rules are in [CONVENTIONS.md](CONVENTIONS.md).
 
-## 上线操作清单（对外动作，一次性）
+**Anchoring**: every day GitHub Actions generates a complete pick ledger snapshot from `origin/main`, writes it to the public `anchors` branch and runs the OpenTimestamps stamp/upgrade. A missed cron run misses no historical picks; the next snapshot still covers every official pick up to its `main_commit_sha`.
 
-> ✅ 已于 2026-09-02 执行完毕（单人维护，必需批准数调整为 0，其余保护全量生效），
-> 实测记录见 [LAUNCH.md](LAUNCH.md)。
+## GitHub protection settings
 
-```bash
-# 1. 创建公开仓库并推送（账本必须从第一个 commit 起就是干净历史）
-gh repo create pattern-xi-ledger --public --source=. --push
+`main` must go through PRs; required approvals are 0 for a single maintainer; the required check is `Ledger integrity` in strict mode; administrators are protected too; force pushes and branch deletion are forbidden. The actual configuration and the pre-freeze verification record are in [LAUNCH.md](LAUNCH.md).
 
-# 2. 启用 GitHub Pages（Settings → Pages → Source: GitHub Actions）
+These controls raise the cost and visibility of anomalous changes; they do not mean the repository owner loses theoretical control over the GitHub configuration.
 
-# 3. 分支保护（Settings → Branches → main）：
-#    - Require a pull request before merging
-#    - Required approvals: 0（单人维护；有第二位协作者后再改为 1）
-#    - 勾选包括 Require status checks: Check / Ledger integrity
-```
+## Honest limitations
 
-之后 CI 全自动：PR 校验、每日锚定到公开 `anchors` 分支、站点部署。`main` 只接受通过评审和必需检查的 PR；自动锚定不会绕过它。
+- Scores and prices are entered by the operator under the current schema and workflow; this ledger does not provide third-party verification of score or price authenticity.
+- GitHub account, GitHub Actions, Pages and OpenTimestamps remain operational dependencies; having no database, back office, server private keys or dynamic services **greatly reduces the operational attack surface**, but does not eliminate it entirely.
+- The first layer proves: an exact pick version passed its check in a public PR at a GitHub server event time at least two hours before kickoff. The second layer proves: a complete ledger state existed before a Bitcoin time anchor.
 
-## 诚实的局限
-
-账本证明的是「推介内容在公开 PR 检查时已存在且当时距开球至少两小时」，合并后内容保持追加式。
-**赔率是运营者申报的**（来源字段必填），
-建议对赔率页面另存第三方快照（如 archive.org Save Page Now）作旁证。
-这两个问题没有免费的完美解，任何系统（包括更复杂的系统）都一样。
-
-## 与 Pattern XI 原项目的关系
-
-原仓库（`E:\PatternXI`）保留为设计档案，本项目的架构决策与移植清单见
-[DESIGN.md](DESIGN.md)，运营规则见 [CONVENTIONS.md](CONVENTIONS.md)。
+For architectural decisions see [DESIGN.md](DESIGN.md); for operating rules see [CONVENTIONS.md](CONVENTIONS.md).

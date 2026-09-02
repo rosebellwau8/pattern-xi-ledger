@@ -4,7 +4,7 @@
 
 **Goal:** Align publication timing, Bitcoin manifests, and all public claims around one precise three-layer evidence model without changing result or price evidence.
 
-**Architecture:** A successful public pull-request workflow run is the publication witness for its exact head SHA; its GitHub-controlled run creation time is the timestamp used by the two-hour gate. Nightly manifests become immutable versioned snapshots containing the corresponding `main` commit SHA, the previous manifest hash, and every formal pick path/hash in that `main` state. Append-only correction validation and deterministic projections remain unchanged.
+**Architecture:** A successful public pull-request workflow run is the publication witness for its exact head SHA; the GitHub-controlled `startedAt` of that successful job attempt is the timestamp used by the two-hour gate. Nightly manifests become immutable versioned snapshots containing the corresponding `main` commit SHA, the previous manifest hash, and every formal pick path/hash in that `main` state. Append-only correction validation and deterministic projections remain unchanged.
 
 **Tech Stack:** Node.js 24, `node:test`, GitHub Actions, GitHub REST API/CLI, OpenTimestamps, deterministic static HTML.
 

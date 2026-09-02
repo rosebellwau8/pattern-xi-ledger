@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Validates every pick and result file, correction chains, and — with
-// --gate — the publication rule for newly added pick files: a pick must be
-// visible in the public PR at least 2 hours before kickoff. The gate compares
-// against the machine clock; on GitHub Actions that clock is the platform's.
+// --gate supports explicit local validation of selected new pick files. The
+// authoritative PR publication witness is enforced by validate-pr.mjs using a
+// GitHub server-side job event time bound to the exact PR head SHA.
 
 import { join } from "node:path";
 

@@ -6,7 +6,7 @@
   "engines": {
     "node": ">=24"
   },
-  "description": "Public prospective football pick ledger anchored by Git history and OpenTimestamps.",
+  "description": "Public prospective football pick ledger with exact-commit CI witnesses and Bitcoin-anchored state snapshots.",
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\" \"tests/*.test.ts\"",
     "typecheck": "tsc --project tsconfig.json",

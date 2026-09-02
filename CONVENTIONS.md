@@ -5,15 +5,25 @@
 
 ## 1. 发布规则
 
-- 每条推介必须在**开球前至少 2 小时**出现在公开 PR；CI 用 GitHub Actions
-  服务器时钟对新推介文件强制执行（PR 门控脚本 `validate-pr.mjs` 复用账本校验逻辑）。
-  这个公开 PR 与对应检查运行是发布时间见证；合并进 `main` 后才进入正式账本和静态站。
+- **Publication time** 定义为：最终被 merge 的该版本 pick，在公开 PR 中首次成功通过
+  `Ledger integrity` 的 job attempt 之 GitHub 服务器侧 `startedAt`。该 job 必须对 PR 的精确
+  head SHA 和文件内容运行，且此时间距 `kickoff_utc` 至少 2 小时。
+- PR 中的 pick 一旦修改便产生新 SHA，必须重新运行并通过检查。最终 merge 的版本必须与通过
+  两小时检查的版本一致；merge 只把已经公开、已经验证的记录纳入正式 ledger 和静态站，
+  不定义首次 publication。
+- Git author/committer timestamp 是可由本地设置、amend 或 rebase 改变的普通元数据，
+  不得作为 publication time 或开球前证明。第一层时间见证仅来自公开 PR 与 GitHub-hosted
+  Actions 对精确 SHA 的服务器事件记录。
 - 已合并的 `picks/**/*.json` 与 `results/**/*.json` 不得修改、删除或重命名；CI 对 PR diff
   强制执行追加式约束。结果错误只能新增 `.rN.json` 修正文件。
 - **全量公布义务**：所有实际下注或推荐的推介都必须入账，不允许选择性公布。
   这是账本可信的前提，也是唯一无法用代码强制、只能靠规则和声誉约束的一条。
 - 单位注固定为 1，不记录滚动注、串关或仓位管理。
 - 市场范围：仅整场亚洲让球盘（`market: "asian_handicap"`），只支持 HOME/AWAY 选择。
+
+GitHub history、branch protection 与追加式校验用于显著提高事后改动的成本和可见性；仓库 owner
+理论上仍控制仓库配置，因此这些机制不被描述为密码学上的绝对不可篡改。独立密码学记录由公开
+`anchors` 分支上的完整 ledger-state manifest 与 OpenTimestamps 提供。
 
 ## 2. 推介文件规则
 
@@ -22,8 +32,8 @@
 - 赔率必填两个字段：`published_price`（公布口径）与 `published_price_format`
   （`DECIMAL_ODDS` 或 `HONG_KONG_ODDS`）；`normalized_decimal_price` 由脚本核对
   （港赔 + 1 = 十进制），杜绝口径漂移。
-- `price_source` 必填（如 "Pinnacle pre-match"）。这是申报字段——账本证明你
-  在何时发布了什么，不能证明赔率页面当时长什么样；建议另存第三方快照作旁证。
+- `price_source` 必填（如 "Pinnacle pre-match"）。这是运营者申报字段——账本证明
+  在何时公开了什么内容，不对赔率页面或第三方赔率进行独立核验。
 - 未知字段直接拒绝（allowlist），不给「顺手加个字段」留口子。
 
 ## 3. 结果录入规则（只录事实，不写结论）

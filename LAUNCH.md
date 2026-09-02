@@ -1,7 +1,8 @@
 # 上线记录（LAUNCH）
 
 本文件是 2026-09-02 上线动作的存档：做了什么、实测结果如何、为什么这么配置。
-将来对账本信任机制有疑问时，以本文件和 Git 历史为准。
+将来对账本运行记录有疑问时，以本文件、公开 PR/Actions 事件和已锚定 manifest 共同复核；
+普通 Git commit 时间不作为服务器时间见证。
 
 ## 地址
 
@@ -26,29 +27,30 @@
 |---|---|---|
 | 必须通过 PR | ✅ 开启 | 任何变更（包括文档）都不能直接 push 到 `main`，必须开 PR |
 | 必需人工批准数 | **0** | 单人维护：PR 评审由运营者自己把关；机器检查仍然全量强制（见下行） |
-| 必需状态检查 | `Ledger integrity`（严格模式） | 合并前 CI 必须通过且分支为最新：全量测试、校验、PR 专属的开球前 ≥2 小时门控与追加式校验、派生文件一致性，全部不可绕过 |
-| 管理员同样受保护 | ✅ 开启 | 账本所有者也无法绕过 PR 流程直接改 `main`，堵住"内部人直接改账"的路 |
-| 强制推送（force push） | ❌ 禁止 | 不能重写 `main` 的历史，账本历史一经公布即不可篡改 |
+| 必需状态检查 | `Ledger integrity`（严格模式） | 最终 PR head SHA 必须通过全量测试、服务器事件时间两小时门控、追加式校验和派生一致性检查 |
+| 管理员同样受保护 | ✅ 开启 | 当前配置下 owner 也受 PR 流程约束；owner 理论上仍控制仓库配置 |
+| 强制推送（force push） | ❌ 禁止 | 当前规则禁止重写 `main`；这提高成本和可见性，但不等同密码学不可篡改 |
 | 删除分支 | ❌ 禁止 | `main` 不能被删除 |
 
 ## CI 验证结果
 
-- **测试**：上线时 14 项全部通过；当前扩展为 29 项（含 52 用例黄金结算数据集、生产导入/发布、manifest 补漏和站点回归）。
+- **测试**：上线时 14 项全部通过；后续已扩展至覆盖 52 用例黄金结算数据集、生产导入/发布、完整状态 manifest 和站点回归。
 - **工作流**：Check（PR/push 完整性）、Deploy site（Pages 部署）、Anchor manifest（每日锚定）最终全绿。
-- **anchors 分支**：已创建并推送成功。当前工作流每日 00:15 UTC 自动运行补漏式 OpenTimestamps 锚定，任何尚未进入旧清单的推介都会纳入下一批，回执写入该公开分支。
+- **anchors 分支**：已创建并推送成功。当前工作流每日 00:15 UTC 对 `origin/main` 的完整 pick ledger state 生成 manifest 并执行 OpenTimestamps；每份快照含 main SHA、全部 pick 哈希和前序 manifest 哈希。
 - **追加式校验**：已公布的 `picks/` 与 `results/` JSON 一旦合并，任何修改、删除、重命名都会被 CI 拒绝（提交 `9711a19` 引入 `scripts/validate-pr.mjs`）。
 - **Pages 实测**：`/`、`/track-record.html`、`/verification.html` 三页均返回 HTTP 200。
 
-## 历史完整性声明
+## 历史运行记录
 
-- 首个提交 `df93957` 自上线起保持不变，未重写（rebase）或强推（force push）任何历史。
+- 截至记录时，首个提交 `df93957` 未经历已知的 rebase 或 force push。这是公开运行记录，
+  不是 GitHub 历史在密码学上绝对不可改的声明。
 - 上线时本地与远端完全同步，工作区干净；账本从第一个 commit 起即为干净历史。
 
 ## 日常运营流程（单人模式）
 
-1. **发推介（开球前 ≥2 小时）**：生产端导出 JSON → `npm run publish -- export.json` →
-   脚本自动建分支、导入、校验、推送和开公开 PR → CI 强制两小时门控与追加式校验 →
-   通过后 GitHub 自动合并（approval=0），即发布生效。
+1. **发推介**：生产端导出 JSON → `npm run publish -- export.json` → 脚本自动建分支、导入、
+   校验、推送和开公开 PR。精确 PR head SHA 首次成功的 `Ledger integrity.startedAt` 定义
+   publication time，必须距 kickoff ≥2 小时。通过后自动 merge（approval=0）只是将同一版本正式入账。
 2. **记结果（终场后）**：写 `results/YYYY/<id>.json`（只录比分/状态等事实）→
    `npm run validate && npm run settle && npm run standings` →
    派生的 `settlements/`、`standings/` 变更随同一个 PR 提交，评审时在 diff 里直接看到程序算出的结论。
@@ -63,3 +65,13 @@
   Require 1 approval），恢复 README「上线操作清单」原建议的互相评审强度。
 - **试运行 → 正式期**：站点当前展示 SHADOW RUN 试运行横幅；正式期开始只需一次声明
   commit（见 DESIGN.md），90 天公开验证时钟自该声明起算。
+
+## 当前证据模型
+
+本项目采用 **Three-layer evidence model**：公开 PR + GitHub-hosted Actions 对精确 SHA 的
+服务器事件是第一层 publication witness；完整 ledger-state manifest + OpenTimestamps/Bitcoin
+是第二层独立密码学时间戳；追加式修正链与确定性重建是第三层 provenance。
+
+Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests
+provide an independent cryptographic record of previously published ledger states. 静态架构 greatly
+reduced the operational attack surface，但仍依赖 GitHub account、Actions、Pages 和 OpenTimestamps。
