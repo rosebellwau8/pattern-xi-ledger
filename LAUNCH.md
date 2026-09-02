@@ -75,3 +75,19 @@
 Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests
 provide an independent cryptographic record of previously published ledger states. 静态架构 greatly
 reduced the operational attack surface，但仍依赖 GitHub account、Actions、Pages 和 OpenTimestamps。
+
+## 架构冻结记录（2026-09-02，UTC）
+
+三层证据模型实现合并并完成冻结前验收后，**架构冻结**：不再新增功能，进入正式 90 天
+公开验证的准备阶段；正式窗口自未来的声明 commit 起算（见 DESIGN.md）。
+
+冻结前验收证据（均为公开可复核的 GitHub 实测）：
+
+| 项目 | 证据 |
+|---|---|
+| 实现合并 | [PR #4](https://github.com/rosebellwau8/pattern-xi-ledger/pull/4)（merge commit `bd63909`），`Ledger integrity` 在精确 head SHA 上通过 |
+| 真实发布见证 | [Check run 33628156164](https://github.com/rosebellwau8/pattern-xi-ledger/actions/runs/33628156164/job/100240744760)：head `b13803a45c35e` 的 `Ledger integrity` job 服务器侧 `startedAt` = `2026-09-02T12:06:55Z`，仓库可见性、run head SHA、job 时间均经 API 核对 |
+| 锚定演练 | [Anchor manifest run 33628289788](https://github.com/rosebellwau8/pattern-xi-ledger/actions/runs/33628289788)：`anchors` 分支生成首份 v2 完整快照 `manifests/2026-09-02.txt`（`main_commit_sha bd63909de1e5`、`previous_manifest_sha256 NONE`、`pick_count 0`），`.ots` 回执已生成；比特币确认按 OpenTimestamps 设计为异步，由周度 `ots upgrade` 补全 |
+| 本地验证 | 33 项测试、typecheck、`validate`、派生文件确定性重建（no-op）、站点确定性构建全部通过；过强表述清扫无残留 |
+| 分支保护复核 | 经 GitHub API 实测：必需检查 `Ledger integrity`（严格模式）、管理员同样受保护、禁 force push、禁删除、PR + 0 批准，与上表定稿一致 |
+| 站点部署 | Pages 部署 `bd63909` 成功，<https://rosebellwau8.github.io/pattern-xi-ledger/> 实测返回英文三层模型内容，HTTPS 强制 |
