@@ -47,7 +47,7 @@ Task 9 运维与清单、Task 10 Assume-Breach + Shadow Run）。
       manifest.mjs：当日推介 SHA-256 + 前日清单哈希（哈希链）
                      │
                      ▼
-      ots stamp → OpenTimestamps → 比特币区块（永久锚定）
+      ots stamp → OpenTimestamps → 比特币区块（回执写入公开 anchors 分支）
                      │
 终场后记结果 ────────┤
 （只录事实）         ▼

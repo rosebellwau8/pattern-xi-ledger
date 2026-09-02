@@ -11,6 +11,7 @@ import test from "node:test";
 
 import { LedgerError, loadPicks, loadResultChains, sha256File } from "../scripts/lib.mjs";
 import { runValidation } from "../scripts/validate.mjs";
+import { analyzeLedgerDiff } from "../scripts/validate-pr.mjs";
 import { buildSettlements } from "../scripts/settle.mjs";
 import { buildStandings } from "../scripts/standings.mjs";
 
@@ -106,6 +107,28 @@ test("the publication gate demands at least two hours before kickoff", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("pull request diffs allow new ledger inputs and reject mutation or deletion", () => {
+  assert.deepEqual(analyzeLedgerDiff([
+    "A\tpicks/2026/2026-09-06-arsenal-chelsea-ah.json",
+    "A\tresults/2026/2026-09-06-arsenal-chelsea-ah.json",
+    "M\tREADME.md",
+    "",
+  ].join("\n")), {
+    gatePaths: ["picks/2026/2026-09-06-arsenal-chelsea-ah.json"],
+    problems: [],
+  });
+
+  const rejected = analyzeLedgerDiff([
+    "M\tpicks/2026/2026-09-06-arsenal-chelsea-ah.json",
+    "D\tresults/2026/2026-09-06-arsenal-chelsea-ah.json",
+    "R100\tresults/2026/old.json\tresults/2026/new.json",
+    "",
+  ].join("\n"));
+  assert.equal(rejected.gatePaths.length, 0);
+  assert.equal(rejected.problems.length, 3);
+  assert.match(rejected.problems[0], /append-only/u);
 });
 
 function writeResult(root, pickId, name, data) {

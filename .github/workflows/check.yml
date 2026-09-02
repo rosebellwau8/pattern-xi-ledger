@@ -30,16 +30,10 @@ jobs:
       - name: Validate all picks, results, and correction chains
         run: node scripts/validate.mjs
 
-      - name: Gate newly added picks at least 2 hours before kickoff
+      - name: Enforce append-only inputs and gate new picks at least 2 hours before kickoff
         if: github.event_name == 'pull_request'
-        run: |
-          added=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD" -- picks)
-          if [ -n "$added" ]; then
-            # The Actions runner clock is the server-side publication witness.
-            echo "$added" | xargs node scripts/validate.mjs --gate
-          else
-            echo "no newly added pick files in this pull request"
-          fi
+        # The Actions runner clock is the server-side publication witness.
+        run: node scripts/validate-pr.mjs "origin/${{ github.base_ref }}" HEAD
 
       - name: Rebuild derived settlements and standings
         run: |

@@ -12,11 +12,11 @@ import { isMainScript, REPO_ROOT, sha256File } from "./lib.mjs";
 
 function creationUtcDate(root, relativePath) {
   const output = execFileSync("git", [
-    "-C", root, "log", "--diff-filter=A", "--format=%ad", "--date=format:%Y-%m-%d", "--", relativePath,
+    "-C", root, "log", "--diff-filter=A", "--format=%ct", "--", relativePath,
   ], { encoding: "utf8" });
-  const dates = output.trim().split("\n").filter((line) => line !== "");
-  if (dates.length === 0) return null;
-  return dates[dates.length - 1];
+  const timestamps = output.trim().split("\n").filter((line) => line !== "");
+  if (timestamps.length === 0) return null;
+  return new Date(Number(timestamps[timestamps.length - 1]) * 1000).toISOString().slice(0, 10);
 }
 
 export function buildManifest(root, date, { git = true } = {}) {

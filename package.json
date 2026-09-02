@@ -10,6 +10,7 @@
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\" \"tests/*.test.ts\"",
     "validate": "node scripts/validate.mjs",
+    "validate:pr": "node scripts/validate-pr.mjs",
     "settle": "node scripts/settle.mjs",
     "standings": "node scripts/standings.mjs",
     "manifest": "node scripts/manifest.mjs",

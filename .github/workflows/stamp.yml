@@ -5,11 +5,6 @@ on:
     # Daily at 21:30 UTC (05:30 Beijing) — after the European matchday evening.
     - cron: "30 21 * * *"
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "picks/**"
 
 permissions:
   contents: write
@@ -28,6 +23,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Update the unprotected public anchor branch from main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          if git fetch origin anchors; then
+            git switch --force-create anchors origin/anchors
+            git merge --no-edit origin/main
+          else
+            git switch --create anchors origin/main
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -39,6 +46,15 @@ jobs:
       - name: Build today's manifest (skips itself when no picks were created today)
         run: node scripts/manifest.mjs
 
+      - name: Discard stale receipts if a manifest changed
+        run: |
+          for f in manifests/*.txt; do
+            [ -f "$f" ] || continue
+            if ! git diff --quiet -- "$f"; then
+              rm -f "$f.ots"
+            fi
+          done
+
       - name: Stamp new manifests and upgrade pending attestations
         run: |
           for f in manifests/*.txt; do
@@ -49,14 +65,12 @@ jobs:
             ots upgrade "$f" || true
           done
 
-      - name: Commit anchored artifacts
+      - name: Commit anchored artifacts to the public anchor branch
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add manifests
           if git diff --cached --quiet; then
             echo "nothing to commit"
           else
             git commit -m "anchor: daily manifest $(date -u +%F)"
-            git push
+            git push origin anchors
           fi
