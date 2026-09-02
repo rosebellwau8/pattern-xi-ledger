@@ -1,107 +1,85 @@
-# DESIGN — 从信任区架构到 Git 账本
+# DESIGN — Three-layer evidence model
 
-**日期：** 2026-09-02
-**状态：** 已接受；原 Pattern XI 平台转为搁置档案（`E:\PatternXI`，保持不动）
+**日期：** 2026-09-02  
+**状态：** 冻结候选；原 Pattern XI 平台保留为搁置档案（`E:\PatternXI`）
 
-## 1. 背景
+## 1. 目标与边界
 
-Pattern XI 原项目用模块化单体（Next.js + PostgreSQL + 独立 Git 证据仓库 +
-Ed25519 签名传输边界）实现「公开、前瞻、可审计」。10/11 实施切片已完成并通过
-Owner 评审，剩余工作全部卡在部署证明类事务上（Gate C-L 真实账户与运维隔离、
-Task 9 运维与清单、Task 10 Assume-Breach + Shadow Run）。
+Pattern XI Ledger 要回答一个窄问题：某个最终 pick 内容是否在开球前至少两小时公开，并且之后的正式记录是否容易复核和发现异常改动。
 
-根本性的反思：**原架构防的是「私有生产系统与公开平台之间的对抗性边界」**
-（Assume-Breach 威胁模型、零生产痕迹、物理终端隔离）。而单人推介记录面对的
-真实问题小得多也清晰得多：
+它不证明运营者录入的比分或赔率本身来自哪个第三方页面。比分与赔率继续由运营者按现有 schema 和工作流录入。本轮不引入数据库、后台、Relay、赔率快照、比分证据服务、第三方 API、消息渠道或签名体系。
 
-> 证明「某条推介、以某个赔率、在开球前存在」。
+## 2. Three-layer evidence model
 
-这个问题不需要私有/公开信任区，不需要数据库状态机，只需要**别人服务器的时间戳**
-和**密码学锚定**。原项目在这一点上其实也没有做得更好——签名包里的赔率同样是
-运营者申报的。
+### 2.1 Public publication witness
 
-## 2. 信任模型
+推介先出现在公开 GitHub PR。`Ledger integrity` 只对该 PR 的精确 head SHA 运行；workflow 显式 checkout 该 SHA，并核对 GitHub Actions run 的 `head_sha`。publication time 定义为该精确 SHA 首次成功检查之 job attempt 的 GitHub 服务器侧 `startedAt`，门控脚本以这个事件时间检查 `kickoff_utc - startedAt >= 2h`。
 
-| 需要证明 | 本账本的机制 | 原项目的机制 |
+pick 后续发生任何字节变化都会产生新 SHA，并触发新检查。最终 merge 的具体版本必须就是曾通过检查的版本；merge 只执行正式入账，不承担首次 publication 的定义。普通 Git author/committer timestamp 可以本地设置、amend 或 rebase，只是 Git 元数据，不是 GitHub 服务器时间，也不参与前瞻发布证明。
+
+### 2.2 Independent cryptographic timestamp
+
+每日 manifest 是一个完整 ledger-state 快照，而不是“当天新增 pick”清单。每份 v2 manifest 包含：
+
+- manifest version；
+- snapshot date；
+- 对应的 `main` commit SHA；
+- 前一份 manifest 精确字节的 SHA-256；
+- 该 `main` 状态中全部正式 pick 文件的路径与 SHA-256。
+
+OpenTimestamps 将 manifest 锚定到 Bitcoin。它主要证明某个完整 ledger state 在 Bitcoin 时间锚之前已经存在，并为独立检测后续历史改动提供密码学记录。某天 cron 漏跑不会漏掉旧 pick，因为下一份 manifest 仍重新覆盖完整 pick ledger。OTS 不是每条 pick 的主要两小时发布证明；第一层公开 PR + Actions 才是。
+
+### 2.3 Append-only correction provenance
+
+CI 拒绝修改、删除或重命名已经发布的 pick/result 文件。修正只新增 `.rN.json`；`corrects` 必须引用上一版本精确字节的 SHA-256；链必须线性、无分叉、连续编号并实际改变事实。settlement 和 standings 由原始事实确定性重建，CI 检查派生文件没有漂移。
+
+Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests provide an independent cryptographic record of previously published ledger states.
+
+## 3. 信任边界
+
+| 需要说明的事实 | 机制 | 不作出的承诺 |
 |---|---|---|
-| 推介在开球前存在 | 公开 PR 内容 + PR CI 服务器时钟执行 ≥2h 规则 + OTS 比特币锚定；不把可自行设置的 Git commit 时间当服务器时间 | 签名包 + 上传接收（部署后仍需信任平台自身时钟与运维） |
-| 记录未被事后篡改 | Git 历史 + 追加式修正链（`corrects` = 被改文件 SHA-256） | PostgreSQL 不可变记录 + 修正 API |
-| 结算不偏袒 | 冻结引擎 + 52 用例黄金数据集 CI 回归；结果文件无结论字段 | 同一套引擎（本账本逐字移植） |
-| 战绩可复核 | `settle && standings && git diff --exit-code`，任何人一条命令重建 | rebuildable projection（同一套数学） |
-| 防抵赖强度的天花板 | 比特币区块时间（约小时级） | 平台自身基础设施的正确部署 |
+| 精确 pick 在开球前公开 | 公开 PR + 精确 head SHA + 成功 `Ledger integrity` job 的服务器侧 `startedAt` + 两小时门控 | 不使用 Git commit timestamp；不要求开球前 merge |
+| 完整账本状态曾经存在 | 全量 pick manifest + main SHA + 前序 manifest SHA-256 + OpenTimestamps/Bitcoin | OTS 不替代逐条 pick 的两小时 PR 见证 |
+| 修正过程可追踪 | append-only diff gate + `.rN.json` + `corrects` 精确字节哈希 | 不宣称仓库 owner 在理论上无法改变 GitHub 设置或历史 |
+| 结算可复核 | 冻结引擎 + 52 用例黄金数据集 + deterministic rebuild | 不对运营者录入的比分或赔率做第三方核验 |
 
-关键洞察：原项目最贵的部分（Gate C-L/Task 9/Task 10）都在防「平台被攻破后
-泄密或作恶」，而静态账本把这个攻击面**整体消灭**了——没有服务器、没有私钥、
-没有数据库可攻破。剩下的信任锚（GitHub、比特币链）都是第三方且可独立验证。
+GitHub history、branch protection、公开 PR 和追加式 validation 显著提高事后改动的成本与可见性，但仓库 owner 理论上仍控制账户和仓库配置。独立于 GitHub history 的密码学证据来自已锚定的 manifest。系统没有数据库、动态后台或服务器私钥，因此 **greatly reduced the operational attack surface**；它仍依赖 GitHub account、Actions、Pages 与 OpenTimestamps。
 
-## 3. 架构
+## 4. 数据流
 
 ```text
-生产导出 ─► import ─► 公开 PR（CI 服务器时钟强制 ≥2h）──► merge = 入账/上站
-                                                              │
-                     ┌────────────────────────────────────────┘
-                     ▼
-      公开 PR + Ledger integrity 检查运行时间
-                     │
-                     ▼  每日 CI
-      manifest.mjs：所有尚未锚定推介 SHA-256 + 前次清单哈希（补漏哈希链）
-                     │
-                     ▼
-      ots stamp → OpenTimestamps → 比特币区块（回执写入公开 anchors 分支）
-                     │
-终场后记结果 ────────┤
-（只录事实）         ▼
-      settle.mjs：冻结引擎算分类与净收益（人工写不了结论）
-                     ▼
-      standings.mjs：精确十进制投影（N/ROI/回撤，可重建）
-                     ▼
-      build-site.mjs：静态 HTML → GitHub Pages（无后端）
+production export
+      │
+      ▼
+public PR: exact head SHA + pick bytes
+      │
+      ▼
+GitHub-hosted Ledger integrity job
+public repository + head_sha match + server-side startedAt + ≥2h
+      │
+      ▼
+merge same checked version → formal main ledger → static Pages
+      │
+      ├── nightly full-state manifest(main SHA + all pick hashes + previous manifest hash)
+      │                                      │
+      │                                      ▼
+      │                          OpenTimestamps → Bitcoin
+      │
+      └── operator-entered result facts → settle → standings → site build
 ```
 
-## 4. 移植资产（原项目 → 本账本）
+## 5. 冻结的结算资产
 
-| 原文件 | 新位置 | 改动 |
+| 资产 | 位置 | 约束 |
 |---|---|---|
-| `apps/platform/src/modules/settlement/settlement-engine.ts` | `src/settlement/` | 仅导入扩展名 `.js`→`.ts`（Node 原生 TS） |
-| `apps/platform/src/modules/settlement/exact-decimal.ts` | `src/settlement/` | 参数属性改为显式字段（可擦除语法要求）；补 `zero()`/`compare()` |
-| `apps/platform/src/modules/settlement/settlement-correction.ts` | `src/settlement/` | 仅导入扩展名 |
-| `fixtures/golden/settlement-v1.json` | `fixtures/golden/` | 逐字节复制（SHA-256 `2a752573…b855` 前缀一致） |
-| `apps/platform/tests/unit/settlement-engine.test.ts` | `tests/golden-settlement.test.ts` | 见下方「045 用例」说明 |
-| `apps/platform/src/modules/performance/performance-projection.ts` | `src/performance/` | 命名适配（`public_pick_id`→`pick_id` 等），数学逐字保留 |
+| Settlement Rules v1 engine | `src/settlement/` | 精确十进制、48/168 小时边界、半赢半输拆分 |
+| 黄金数据集 | `fixtures/golden/settlement-v1.json` | 52 用例，SHA-256 基线前缀 `2a752573…b855` |
+| Performance projection | `src/performance/` | N、ROI、累计收益、最大回撤可重建 |
+| Ledger validation | `scripts/lib.mjs`、`scripts/validate-pr.mjs` | schema、两小时门控、追加式修正链 |
 
-黄金数据集契约不变：52 用例、`NORMATIVE_OWNER_REVIEWED_PASS`、
-精确十进制、48/168 小时边界、半赢半输拆分，全部 CI 强制回归。
+## 6. 架构冻结
 
-## 5. 什么被什么替代了
+完成真实 GitHub PR、required check、merge、manifest/OTS workflow、settlement、standings 与 Pages 部署验证后，本架构进入 90 天公开验证准备阶段。冻结期间不增加比分来源验证、赔率证据、动态服务、消息渠道或多运营者签名；发现 bug 时只做保持三层定义一致的必要修复。
 
-- **Ed25519 + RFC 8785 签名边界** → Git commit + OTS。签名解决「哪个运营者
-  发的」，账本场景只有一个运营者，问题不存在；锚定解决「何时发的」，强度更高。
-- **PostgreSQL 状态机 + 操作员 Review/Confirm 工作流** → PR 流程。
-  黄金数据集 045 号用例（确认前修正使旧 preview 失效、评审绑定新 preview 哈希）
-  在账本里由 PR 语义天然覆盖：未合并的结果可以被后续 commit 替换，评审永远
-  看的是合并瞬间的最终内容，`settlements/` 派生文件进 diff 让结论可审。
-- **Gate C-L 部署隔离、Task 9 运维、Task 10 Assume-Breach** → 不适用。
-  无服务器则无部署隔离、无日志抑制、无备份恢复问题；账本本身永久存在于 Git。
-- **90 天验证时钟（fail-closed SHADOW_RUN）** → 站点横幅 + 账本规则页。
-  正式期开始的声明本身作为一次 commit 入账即可。
-- **备份/PITR** → GitHub + 任意远端镜像（`git clone` 即完整备份）。
-
-## 6. 明确不做
-
-Ed25519 签名、数据库、账户体系、订阅、X/Twitter 自动化、移动端、
-Pattern Explorer、除亚盘外的市场。原 backlog 的大部分项与本账本无关。
-
-## 7. 后续可选增强（均不阻塞上线）
-
-1. **Telegram 频道镜像**：每条推介合并后自动转发哈希+摘要，增加人类证人层；
-2. **赔率页 Wayback 快照**：`web.archive.org/save/<赔率页URL>` 作为赔率旁证；
-3. **OTS 回执升级提醒**：weekly `ots upgrade` 已在 stamp.yml 内，无需额外工作；
-4. **多运营者**：若未来有第二人发布，再引入署名（per-author GPG 签名 commit），
-   当前单人场景明确不做。
-
-## 8. 原项目处置
-
-`E:\PatternXI` 保持原样作为设计档案与历史基线（其标签
-`stage-1-pass-2026-08-23-r1`、`publication-core-owner-reviewed-pass-2026-08-24` 等
-继续有效）。本账本如未来需要更强的平台能力（账户、API、实时页面），可在
-账本数据之上另建呈现层——账本格式保持稳定，展示层随时可以重写。
+原项目 `E:\PatternXI` 继续保持原样作为历史设计档案。本账本的公开事实与规则以本仓库为准。

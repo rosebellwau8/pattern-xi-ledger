@@ -79,8 +79,32 @@ test("homepage is an English data-first publication with escaped pick content", 
     assert.match(html, />Away<\/dd>/u);
     assert.match(html, />−0\.75<\/dd>/u);
     assert.match(html, /0\.97/u);
-    assert.ok(html.indexOf("Upcoming picks") < html.indexOf("How the ledger works"));
+    assert.ok(html.indexOf("Upcoming picks") < html.indexOf("Three-layer evidence model"));
     assert.doesNotMatch(html, /historical_matches|result_distribution|public_note/u);
+    assert.match(html, /Three-layer evidence model/u);
+    assert.match(html, /exact PR commit/u);
+    assert.match(html, /complete ledger state/u);
+    assert.match(html, /detectable/u);
+    assert.doesNotMatch(html, /Append-only, forever|every pick not already anchored/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("verification page separates the PR witness from the independent Bitcoin anchor", () => {
+  const root = makeLedger();
+  try {
+    fixture(root);
+    buildSite(root);
+    const html = readFileSync(join(root, "site-dist/verification.html"), "utf8");
+
+    assert.match(html, /Public publication witness/u);
+    assert.match(html, /successful.*Ledger integrity.*exact.*head SHA/is);
+    assert.match(html, /startedAt/u);
+    assert.match(html, /Independent cryptographic timestamp/u);
+    assert.match(html, /full ledger-state snapshot/u);
+    assert.match(html, /does not make GitHub history cryptographically immutable/u);
+    assert.doesNotMatch(html, /nothing has been altered since|Every pick is listed once/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

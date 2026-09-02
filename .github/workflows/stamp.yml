@@ -2,8 +2,8 @@ name: Anchor manifest
 
 on:
   schedule:
-    # Shortly after UTC midnight; the catch-up manifest includes every pick
-    # that is not already represented, so delayed runs cannot lose a day.
+    # Shortly after UTC midnight. Every run snapshots the complete formal pick
+    # ledger at origin/main; a delayed run therefore still covers all history.
     - cron: "15 0 * * *"
   workflow_dispatch:
 
@@ -44,8 +44,8 @@ jobs:
       - name: Install OpenTimestamps client
         run: python -m pip install --quiet opentimestamps-client==0.7.2
 
-      - name: Build catch-up manifest for every unanchored pick
-        run: node scripts/manifest.mjs "$(date -u +%F)"
+      - name: Build complete ledger-state manifest
+        run: node scripts/manifest.mjs "$(date -u +%F)" "$(git rev-parse origin/main)"
 
       - name: Discard stale receipts if a manifest changed
         run: |
@@ -73,6 +73,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "nothing to commit"
           else
-            git commit -m "anchor: catch-up manifest $(date -u +%F)"
+            git commit -m "anchor: ledger-state snapshot $(date -u +%F)"
             git push origin anchors
           fi

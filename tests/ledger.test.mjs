@@ -11,7 +11,11 @@ import test from "node:test";
 
 import { LedgerError, loadPicks, loadResultChains, sha256File } from "../scripts/lib.mjs";
 import { runValidation } from "../scripts/validate.mjs";
-import { analyzeLedgerDiff } from "../scripts/validate-pr.mjs";
+import {
+  analyzeLedgerDiff,
+  parsePublicationWitness,
+  validateExpectedHeadSha,
+} from "../scripts/validate-pr.mjs";
 import { buildSettlements, main as writeSettlements } from "../scripts/settle.mjs";
 import { buildStandings } from "../scripts/standings.mjs";
 
@@ -107,6 +111,23 @@ test("the publication gate demands at least two hours before kickoff", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the publication witness is an explicit GitHub event time bound to the exact head SHA", () => {
+  assert.equal(
+    parsePublicationWitness("2026-09-06T14:30:00Z"),
+    Date.parse("2026-09-06T14:30:00Z"),
+  );
+  assert.throws(() => parsePublicationWitness(undefined), /witness time is required/u);
+  assert.throws(() => parsePublicationWitness("2026-09-06 14:30:00"), /must match YYYY-MM-DD/u);
+
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  assert.doesNotThrow(() => validateExpectedHeadSha(sha, sha));
+  assert.throws(
+    () => validateExpectedHeadSha(sha, "1123456789abcdef0123456789abcdef01234567"),
+    /does not match the checked-out head/u,
+  );
+  assert.throws(() => validateExpectedHeadSha("not-a-sha", sha), /commit SHA/u);
 });
 
 test("pull request diffs allow new ledger inputs and reject mutation or deletion", () => {

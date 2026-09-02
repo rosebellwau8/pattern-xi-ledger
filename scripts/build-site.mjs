@@ -411,7 +411,7 @@ function page(title, description, body, activeNav, prefix = "") {
 <header class="masthead"><div class="wrap">
   <div class="masthead-in">
     <a class="wordmark" href="${prefix}index.html">Pattern <em>XI</em></a>
-    <p class="tagline">Football picks, published before kickoff — provably.</p>
+    <p class="tagline">Exact picks. Public witnesses. Auditable history.</p>
   </div>
   <nav class="nav" aria-label="Site">
       ${nav}
@@ -497,7 +497,7 @@ function pickTicket(pick) {
 </article>`;
 }
 
-const EMPTY_TABLE = `<p class="empty">No picks yet. The moment one is published it appears here — exposed in a public PR at least two hours before kickoff, before any result can exist.</p>`;
+const EMPTY_TABLE = `<p class="empty">No picks yet. A pick becomes public in an exact PR commit and must pass its GitHub-hosted two-hour check before it can enter the formal ledger.</p>`;
 
 function niceStep(raw) {
   const power = 10 ** Math.floor(Math.log10(raw));
@@ -581,7 +581,7 @@ function buildIndexPage(orderedPicks, settlements, standings) {
     ? `<a class="more" href="track-record.html">All ${orderedPicks.length} picks →</a>`
     : "";
   return page("Overview",
-    "Pattern XI is a public football picks ledger: every Asian-handicap pick passes a public server-clock check at least two hours before kickoff and is anchored to Bitcoin.",
+    "Pattern XI is a public football picks ledger with an exact-commit publication witness, complete-state Bitcoin timestamps and append-only correction provenance.",
     `
 <section class="hero">
   <p class="eyebrow">Independent Asian handicap ledger</p>
@@ -606,20 +606,20 @@ function buildIndexPage(orderedPicks, settlements, standings) {
   </div>
 </section>
 
-<section aria-label="How the ledger works">
-  <h2>How the ledger works</h2>
+<section aria-label="Three-layer evidence model">
+  <h2>Three-layer evidence model</h2>
   <div class="pillars">
     <article class="card pillar">
-      <h3><span class="k">01</span>Two hours clear</h3>
-      <p>A public pull request exposes the exact pick. CI uses the GitHub Actions runner clock and rejects it unless at least two hours remain.</p>
+      <h3><span class="k">01</span>Public publication witness</h3>
+      <p>A public PR exposes the exact PR commit. A successful GitHub-hosted <em>Ledger integrity</em> job records its server-side start time and requires at least two hours before kickoff. A changed pick has a new SHA and must pass again; merge only admits that same checked version to the formal ledger.</p>
     </article>
     <article class="card pillar">
-      <h3><span class="k">02</span>Anchored to Bitcoin</h3>
-      <p>Each nightly batch captures every pick not already anchored. Its SHA-256 manifest is stamped through OpenTimestamps and published on <code>anchors</code>.</p>
+      <h3><span class="k">02</span>Independent cryptographic timestamp</h3>
+      <p>Each nightly manifest names the exact main commit and hashes every pick in the complete ledger state. Chained manifests are stamped through OpenTimestamps and published on <code>anchors</code>.</p>
     </article>
     <article class="card pillar">
-      <h3><span class="k">03</span>Append-only, forever</h3>
-      <p>Results record facts — scores and statuses only. Grades and profits are always computed by a frozen engine, and any correction must cite the SHA-256 of the record it corrects.</p>
+      <h3><span class="k">03</span>Append-only correction provenance</h3>
+      <p>CI rejects overwrites of published inputs. Corrections append a new revision linked to the exact prior bytes; settlement and standings are rebuilt deterministically. Together, the layers are designed to make retrospective alteration detectable.</p>
     </article>
   </div>
 </section>
@@ -649,7 +649,7 @@ function buildTrackRecordPage(orderedPicks, settlements, standings) {
 <section class="hero">
   <p class="eyebrow">Track record</p>
   <h1>Every pick, winners and losers alike</h1>
-  <p class="standfirst">Nothing here is deleted and nothing is rewritten. The tables below are generated straight from the ledger; the curve is the exact cumulative net return, unit stake by unit stake.</p>
+  <p class="standfirst">Authoritative inputs follow append-only rules and corrections remain visible. The tables below are generated straight from the ledger; the curve is the exact cumulative net return, unit stake by unit stake.</p>
 </section>
 
 <section aria-label="Cumulative net return">
@@ -676,7 +676,7 @@ ${monthSections || `
 function buildVerificationPage() {
   const code = (text) => `<pre><code>${esc(text)}</code></pre>`;
   return page("Verify it yourself",
-    "Four commands and five minutes: check publication times, hash manifests, verify Bitcoin timestamps and rebuild the entire Pattern XI record from raw data.",
+    "Verify the exact-commit public PR witness, full-state Bitcoin timestamp and deterministic rebuild of the Pattern XI ledger.",
     `
 <section class="hero">
   <p class="eyebrow">Verification</p>
@@ -694,18 +694,18 @@ function buildVerificationPage() {
         ${code(`git clone ${REPO_URL}.git\ncd pattern-xi-ledger`)}
       </li>
       <li>
-        <h3>Check when a pick was first published</h3>
-        <p>Find the public pull request that introduced the pick. Its Ledger integrity run records the server-clock check performed while the exact file was public.</p>
-        ${code(`git log --diff-filter=A --format=%H -- picks/2026/<pick-file>.json\ngh run list --commit <commit-sha> --workflow Check`)}
+        <h3>Verify the public publication witness</h3>
+        <p>Find the public PR head commit that introduced the pick. The earliest successful <em>Ledger integrity</em> job for that exact head SHA is the witness: its GitHub server-side <code>startedAt</code> must be at least two hours before kickoff. If the pick changes, its SHA changes and the check must run again. Merge merely admits the same checked version to the formal ledger.</p>
+        ${code(`git log --all --diff-filter=A --format=%H -- picks/2026/<pick-file>.json\ngh run list --event pull_request --commit <head-sha> --workflow Check --status success --json databaseId,headSha,event,conclusion,url\ngh run view <run-id> --json headSha,jobs`)}
       </li>
       <li>
-        <h3>Match the file to its anchored batch</h3>
-        <p>Every pick is listed once in an immutable SHA-256 manifest on the open <code>anchors</code> branch. Each batch chains to the previous manifest.</p>
-        ${code(`git switch anchors\nsha256sum picks/2026/<pick-file>.json\ncat manifests/<date>.txt`)}
+        <h3>Inspect a full ledger-state snapshot</h3>
+        <p>Every manifest names one exact <code>main</code> commit, lists the SHA-256 of every formal pick in that complete ledger state, and links to the previous manifest bytes.</p>
+        ${code(`git switch anchors\ncat manifests/<date>.txt\ngit show <main-commit-sha>:picks/2026/<pick-file>.json | sha256sum`)}
       </li>
       <li>
-        <h3>Verify the Bitcoin timestamp</h3>
-        <p>Every manifest is stamped through OpenTimestamps. Verification is independent of this site and will keep working for as long as Bitcoin does.</p>
+        <h3>Verify the independent cryptographic timestamp</h3>
+        <p>OpenTimestamps proves that the full ledger-state snapshot existed before its Bitcoin time anchor. It is a second layer for detecting later historical alteration, not the primary two-hour publication witness for each pick.</p>
         ${code(`pip install opentimestamps-client\nots verify manifests/<date>.txt.ots`)}
       </li>
       <li>
@@ -720,8 +720,9 @@ function buildVerificationPage() {
 <section aria-label="What this proves">
   <div class="card">
     <h2>What this proves — and what it does not</h2>
-    <p style="margin:0 0 0.8rem">The ledger proves that each pick existed, in its exact content, before the match kicked off — and that nothing has been altered since. Prices, however, are declared by the operator with a mandatory source field; a third-party snapshot of the odds page (for example archive.org's Save Page Now) is recommended as corroboration. No system, however elaborate, removes that residual trust — this one simply keeps it narrow, visible and cheap to audit.</p>
-    <p style="margin:0">Settlement maths is frozen under Settlement Rules v1, guarded by a 52-case golden-dataset regression in CI. Official scores decide results; corrections append a new file citing the SHA-256 of the file they correct, and the original is never edited.</p>
+    <p style="margin:0 0 0.8rem"><strong>Public publication witness:</strong> a public PR and successful GitHub Actions check show that the exact final head SHA passed the two-hour rule at the job's server-side start time. <strong>Independent cryptographic timestamp:</strong> a Bitcoin-stamped, full ledger-state snapshot establishes that state existed before the anchor time. <strong>Append-only correction provenance:</strong> validation rules and hash-linked revisions make changes conspicuous and reproducible.</p>
+    <p style="margin:0 0 0.8rem">Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests provide an independent cryptographic record of previously published ledger states. Repository owners still control GitHub settings, so this does not make GitHub history cryptographically immutable; branch protection and public history greatly raise the cost and visibility of interference.</p>
+    <p style="margin:0">Scores and prices remain operator-entered facts and are not independently verified here. Settlement maths is frozen under Settlement Rules v1 and guarded by a 52-case golden-dataset regression. The static design has greatly reduced the operational attack surface, but it still depends on the GitHub account, Actions, Pages and OpenTimestamps.</p>
   </div>
 </section>
 `, "verification.html");
@@ -805,7 +806,7 @@ ${settlement.revisions[settlement.revisions.length - 1].result.components
 <section aria-label="Result and correction chain">
   <div class="card">
     <h2>Result &amp; correction chain</h2>
-    <p class="fineprint" style="margin:0 0 0.8rem">Append-only: a correction adds a new file citing the SHA-256 of the file it corrects. Nothing above is ever edited or deleted.</p>
+    <p class="fineprint" style="margin:0 0 0.8rem">The append-only protocol requires a correction to add a new file citing the SHA-256 of the file it corrects; CI rejects overwriting or deleting an existing authoritative record.</p>
     ${chainRows}
   </div>
 </section>

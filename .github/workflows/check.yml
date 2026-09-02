@@ -7,6 +7,7 @@ on:
       - main
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -18,6 +19,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -36,10 +38,28 @@ jobs:
       - name: Validate all picks, results, and correction chains
         run: node scripts/validate.mjs
 
+      - name: Resolve public GitHub publication witness
+        if: github.event_name == 'pull_request'
+        id: publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)" = "public"
+          run_head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq .head_sha)"
+          test "$run_head_sha" = "$EXPECTED_HEAD_SHA"
+          witness_time="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs" \
+            --jq '.jobs[] | select(.name == "Ledger integrity") | .started_at')"
+          test -n "$witness_time"
+          echo "witness_time=$witness_time" >> "$GITHUB_OUTPUT"
+          echo "Public PR witness: head=$EXPECTED_HEAD_SHA job_started_at=$witness_time"
+
       - name: Enforce append-only inputs, two-hour picks, and post-kickoff results
         if: github.event_name == 'pull_request'
-        # The Actions runner clock is the server-side publication witness.
-        run: node scripts/validate-pr.mjs "origin/${{ github.base_ref }}" HEAD
+        run: >-
+          node scripts/validate-pr.mjs "origin/${{ github.base_ref }}" HEAD
+          --witness-time "${{ steps.publication.outputs.witness_time }}"
+          --expected-head-sha "${{ github.event.pull_request.head.sha }}"
 
       - name: Rebuild derived settlements and standings
         run: |

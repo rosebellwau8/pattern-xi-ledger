@@ -1,113 +1,108 @@
 # Pattern XI — Public Picks Ledger
 
-A public, prospective, auditable ledger of football Asian-handicap picks.
-No database, no back office, no signing server — **the Git history is the ledger, and third-party timestamps are the notary**.
+A public, prospective, auditable ledger of football Asian-handicap picks. No database, no back office, no dynamic services; the static site is just a view over the public Git ledger.
 
-## The trust story
+## Three-layer evidence model
 
-Every pick has to answer the same scepticism: "How do you prove it was published before the result came out?" This ledger answers with three independent anchors:
+1. **Public publication witness**
+   - The exact version of a pick first appears in a public GitHub PR;
+   - GitHub Actions' `Ledger integrity` runs against that PR's exact head SHA and file contents;
+   - publication time is defined as the GitHub server-side `startedAt` of the first job attempt in which that exact SHA passed the check;
+   - that time must be at least 2 hours before `kickoff_utc`. If the pick is modified, its SHA changes and it must be checked again;
+   - merging only admits the same, already-public, already-verified version into the official ledger; it does not define first publication.
 
-1. **Public PR + GitHub Actions server clock** — when a pick file appears in a public PR, CI enforces a window of at least 2 hours before kickoff on the runner's clock; Git commit timestamps are locally settable metadata and are never used as the gating witness;
-2. **Catch-up manifests + OpenTimestamps** — every night CI anchors the SHA-256 hashes of all picks not yet covered by a manifest to the Bitcoin blockchain; a missed run is simply caught up in the next batch, receipts live on the public `anchors` branch, and manifests are chained head to tail;
-3. **Append-only correction chain** — result files are only ever appended, never overwritten; a correction must carry the SHA-256 of the record it corrects (the `corrects` field), so every change stays visible in Git history.
+2. **Independent cryptographic timestamp**
+   - Every manifest records the corresponding `main` commit SHA, the SHA-256 of the previous manifest, and the paths and SHA-256 hashes of all official pick files in that `main` state;
+   - OpenTimestamps anchors this complete ledger-state snapshot to Bitcoin;
+   - it proves that the complete state existed before a given Bitcoin time anchor, and provides an independent record for detecting later history alterations;
+   - it is the second cryptographic anchor, not the primary source of the per-pick two-hours-before-kickoff proof.
 
-Settlement classifications and net returns are **always computed by a frozen engine** (guarded by a 52-case golden-dataset regression); result files record facts only (scores, statuses) and cannot carry conclusions.
+3. **Append-only correction provenance**
+   - Published pick/result files must never be overwritten, deleted or renamed;
+   - result corrections are appended as `.rN.json`, with `corrects` citing the exact-byte SHA-256 of the previous version;
+   - correction chains must be linear, unforked, and must actually change facts;
+   - settlements and standings are always rebuilt deterministically from raw facts by programs, with settlement semantics guarded by the 52-case golden dataset.
+
+Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests provide an independent cryptographic record of previously published ledger states.
+
+Git history, branch protection and append-only validation sharply raise the cost and visibility of after-the-fact changes, but the repository owner still theoretically controls the GitHub configuration, so GitHub history is not described as cryptographically absolutely tamper-proof. Ordinary Git author/committer timestamps are locally settable Git metadata and carry no publication proof.
 
 ## Verify it yourself in five minutes
 
 ```bash
 git clone https://github.com/rosebellwau8/pattern-xi-ledger.git && cd pattern-xi-ledger
 
-# 1. Find the commit that introduced the pick, then check the public PR's Ledger integrity run time
-git log --diff-filter=A --format=%H -- picks/2026/<pick-file>.json
-gh run list --commit <commit-sha> --workflow Check
+# 1. Find the PR head SHA that introduced the pick
+git log --all --diff-filter=A --format=%H -- picks/2026/<pick-file>.json
 
-# 2. Switch to the public anchoring branch and match the file hash against the manifest
+# 2. Find the earliest successful public PR check for that SHA and read Ledger integrity.startedAt
+gh run list --event pull_request --commit <head-sha> --workflow Check --status success \
+  --json databaseId,headSha,event,conclusion,url
+gh run view <run-id> --json headSha,jobs
+
+# 3. Check the full ledger-state manifest and its Bitcoin timestamp
 git switch anchors
-sha256sum picks/2026/<pick-file>.json && cat manifests/<date>.txt
-
-# 3. Verify the manifest's Bitcoin timestamp (after pip install opentimestamps-client)
+cat manifests/<date>.txt
+git show <main-commit-sha>:picks/2026/<pick-file>.json | sha256sum
 ots verify manifests/<date>.txt.ots
 
-# 4. Rebuild the entire record from raw data; there must be no diff
+# 4. Rebuild the entire record from raw facts; there must be no diff
 node scripts/settle.mjs && node scripts/standings.mjs && git diff --exit-code
 ```
+
+Step 1 yields a content-version identifier, not a trusted time; the trusted first-layer time witness comes from the GitHub-hosted Actions job event of the public PR in step 2.
 
 ## Repository layout
 
 ```text
-picks/YYYY/<id>.json        Picks (committed pre-kickoff; id starts with the kickoff UTC date)
+picks/YYYY/<id>.json        Picks (id starts with the kickoff UTC date)
 results/YYYY/<id>.json      Results (appended after full time; corrections as <id>.rN.json + corrects chain)
-settlements/YYYY/<id>.json  Derived: settlement details (generated, committed for review, CI enforces freshness)
-manifests/YYYY-MM-DD.txt    anchors branch: hashes of not-yet-anchored picks + previous manifest hash
+settlements/YYYY/<id>.json  Derived settlement details (generated; CI enforces freshness)
+manifests/YYYY-MM-DD.txt    anchors branch: complete pick ledger snapshot + main SHA + previous manifest hash
 manifests/*.ots             anchors branch: OpenTimestamps Bitcoin anchoring receipts
-standings/standings.json    Derived: standings projection (generated; can be deleted and rebuilt at any time)
-src/settlement/             Settlement engine (ported verbatim from Pattern XI Task 6; 52-case golden dataset)
-src/performance/            Standings projection (from Task 7; exact decimal, zero-origin max drawdown)
+standings/standings.json    Derived standings projection (generated, rebuildable)
+src/settlement/             Settlement engine (52-case golden dataset)
+src/performance/            Standings projection (exact decimal)
 scripts/                    import / validate / settle / standings / manifest / build-site
-tests/                      Golden-dataset regression + ledger rule tests
+tests/                      Golden dataset, ledger rules, evidence model and site regressions
 site-dist/                  Static site build output (gitignored, generated at deploy time)
 ```
 
 ## Everyday commands (Node ≥ 24, zero runtime dependencies)
 
 ```bash
-npm test                                # 52-case golden dataset + ledger rule tests
-npm run typecheck                       # strict TypeScript static check
-npm run import -- export.json           # extract compliant public picks from a production v1 JSON export
-npm run import -- --dry-run export.json # preview only, write nothing
-npm run publish -- export.json          # branch, import, open a PR, and auto-merge once CI passes
-npm run validate                        # validate all data and correction chains (CI enforces the ≥2h rule on new picks)
-npm run settle                          # recompute settlements from picks + results (derived files)
-npm run standings                       # rebuild the standings projection (derived files)
-npm run manifest                        # build a catch-up manifest for all not-yet-anchored picks
-npm run build                           # build the static site into site-dist/
+npm test
+npm run typecheck
+npm run import -- export.json
+npm run import -- --dry-run export.json
+npm run publish -- export.json
+npm run validate
+npm run settle
+npm run standings
+npm run manifest -- <UTC-date> <main-commit-sha>
+npm run build
 ```
 
 ## Operating procedures
 
-**Publishing a pick (≥2 hours before kickoff)**: export `production-public-export.v1` from the production side →
-`npm run publish -- export.json`. The command creates a branch, imports, validates, rebuilds derived files, pushes and opens
-a public PR, then auto-merges once required checks pass. The importer strips rankings, patterns and internal notes, keeping
-only fixture identity, final direction, line, price and source; fixtures under two hours away at export time are explicitly
-skipped. CI enforces the gate again on the public PR using GitHub's server clock, and rejects modification or deletion of
-published pick/result JSON.
+**Publishing a pick**: export `production-public-export.v1` on the production side → `npm run publish -- export.json`. The script creates a branch, extracts the final direction/line/price, validates, rebuilds derived files, pushes and opens a public PR. Fixtures under two hours away at export time are skipped up front; the remote `Ledger integrity` then checks the exact PR head SHA against the GitHub server-side event time of that job attempt. The merged version must be identical to the version that passed the check; only after merging does a pick enter the official ledger and the static site.
 
-**Recording a result (after full time)**: write `results/YYYY/<id>.json` (facts only — scores/status) →
-`npm run validate && npm run settle && npm run standings` → commit the derived `settlements/` and `standings/` changes in
-the same PR, so reviewers see the computed outcome directly in the diff. CI rejects result files added before kickoff.
+**Recording a result**: after full time, add `results/YYYY/<id>.json` (facts only — scores, statuses) → `npm run validate && npm run settle && npm run standings` → put the derived `settlements/` and `standings/` changes into the same PR. CI rejects results added before kickoff.
 
-**Correcting an error**: add `<id>.r2.json` with `corrects` set to the corrected file's SHA-256; never touch the old file.
-The four correction semantics and their evidence requirements are documented in [CONVENTIONS.md](CONVENTIONS.md).
+**Correcting**: add `<id>.rN.json` with `corrects` set to the previous version file's exact SHA-256; never overwrite the old file. Detailed rules are in [CONVENTIONS.md](CONVENTIONS.md).
 
-## Launch checklist (external actions, one-off)
+**Anchoring**: every day GitHub Actions generates a complete pick ledger snapshot from `origin/main`, writes it to the public `anchors` branch and runs the OpenTimestamps stamp/upgrade. A missed cron run misses no historical picks; the next snapshot still covers every official pick up to its `main_commit_sha`.
 
-> ✅ Executed on 2026-09-02 (single maintainer, required approvals set to 0, all other protections in force) —
-> the measured record is in [LAUNCH.md](LAUNCH.md).
+## GitHub protection settings
 
-```bash
-# 1. Create the public repository and push (the ledger must be a clean history from the first commit)
-gh repo create pattern-xi-ledger --public --source=. --push
+`main` must go through PRs; required approvals are 0 for a single maintainer; the required check is `Ledger integrity` in strict mode; administrators are protected too; force pushes and branch deletion are forbidden. The actual configuration and the pre-freeze verification record are in [LAUNCH.md](LAUNCH.md).
 
-# 2. Enable GitHub Pages (Settings → Pages → Source: GitHub Actions)
-
-# 3. Branch protection (Settings → Branches → main):
-#    - Require a pull request before merging
-#    - Required approvals: 0 (single maintainer; raise to 1 when a second collaborator joins)
-#    - Require status checks: Ledger integrity (workflow: Check)
-```
-
-After that CI runs itself: PR validation, nightly anchoring to the public `anchors` branch, site deployment.
-`main` accepts only PRs that pass review and the required checks; automatic anchoring never bypasses them.
+These controls raise the cost and visibility of anomalous changes; they do not mean the repository owner loses theoretical control over the GitHub configuration.
 
 ## Honest limitations
 
-The ledger proves that a pick's content already existed — at least two hours before kickoff — when its public PR check ran,
-and that history stays append-only after the merge. **Prices are declared by the operator** (a source field is mandatory);
-third-party snapshots of the odds page (e.g. archive.org Save Page Now) are recommended as corroboration.
-Neither problem has a free perfect solution, in any system, including more elaborate ones.
+- Scores and prices are entered by the operator under the current schema and workflow; this ledger does not provide third-party verification of score or price authenticity.
+- GitHub account, GitHub Actions, Pages and OpenTimestamps remain operational dependencies; having no database, back office, server private keys or dynamic services **greatly reduces the operational attack surface**, but does not eliminate it entirely.
+- The first layer proves: an exact pick version passed its check in a public PR at a GitHub server event time at least two hours before kickoff. The second layer proves: a complete ledger state existed before a Bitcoin time anchor.
 
-## Relationship to the original Pattern XI project
-
-The original repository (`E:\PatternXI`) is kept as a design archive. For this project's architectural decisions and the
-porting manifest see [DESIGN.md](DESIGN.md); for operating rules see [CONVENTIONS.md](CONVENTIONS.md).
+For architectural decisions see [DESIGN.md](DESIGN.md); for operating rules see [CONVENTIONS.md](CONVENTIONS.md).

@@ -1,5 +1,8 @@
 # Pattern XI Production Readiness Implementation Plan
 
+> Historical plan. Manifest catch-up details below were superseded on 2026-09-02 by
+> [Three-layer evidence model](2026-09-02-three-layer-evidence-model.md).
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Deliver an aesthetically upgraded English static site, repair every audited ledger and anchoring defect, add convenient production-export ingestion, and release through the protected GitHub workflow.
@@ -58,16 +61,16 @@
 3. Ensure only final recommendation, handicap, price, fixture identity and required public source fields enter pick records.
 4. Document the one-command handoff and practical publication cutoff.
 
-### Task 5: Make anchoring complete and chronological
+### Task 5: Make anchoring complete and chronological (superseded)
 
 **Files:**
 - Modify: `scripts/manifest.mjs`
 - Modify: `.github/workflows/stamp.yml`
 - Create: `tests/manifest.test.mjs`
 
-1. Add tests for late-day picks, multiple missing dates, chronological previous-manifest hashes, idempotency, and explicit server publication timestamps.
-2. Implement catch-up generation for every missing publication date rather than only today.
-3. Schedule after UTC midnight and pass the workflow server timestamp explicitly.
+1. Historical implementation used incremental catch-up manifests.
+2. The frozen design instead creates a complete pick-ledger snapshot for an exact `main` SHA on every manifest date.
+3. Publication timing is independently bound to a public PR's exact SHA and the successful Actions job attempt `startedAt`.
 4. Pin the OpenTimestamps client version and preserve receipt upgrade behaviour.
 
 ### Task 6: Align policy, tooling and repository hygiene
@@ -92,4 +95,3 @@
 2. Render desktop and mobile screenshots and inspect focus/navigation/overflow.
 3. Commit cohesive changes, push `fix/production-readiness`, open a PR, and wait for required checks.
 4. Merge through GitHub, verify `main`, Pages HTTP 200, branch protection, and a clean synchronized local worktree.
-
