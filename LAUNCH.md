@@ -44,6 +44,7 @@ Recorded as it happened: the anchoring pipeline went through a real "fail → fi
 
 - As of this record, the first commit `df93957` has not been rebased or force-pushed to our knowledge. This is a public statement of the operating record, not a claim that GitHub history is cryptographically immutable.
 - At launch the local and remote repositories were fully in sync with a clean working tree; the ledger has been a clean history from its first commit.
+- 2026-09-02: the three historical planning documents under `docs/plans/` were removed from the tree to keep the public surface minimal. They contained no credentials or personal data — only design deliberation — and remain reachable in Git history. History was deliberately not rewritten: the anchored manifests and PR witness events reference the existing SHAs, and a purge would cost more evidence than it protects.
 
 ## Daily operating flow (single-maintainer mode)
 
