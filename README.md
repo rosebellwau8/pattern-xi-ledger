@@ -1,112 +1,113 @@
-# Pattern XI 公开推介账本
+# Pattern XI — Public Picks Ledger
 
-一个公开、前瞻、可审计的足球亚盘推介记录账本。
-没有数据库、没有后台、没有签名服务器——**Git 历史就是账本，第三方时间戳就是公证人**。
+A public, prospective, auditable ledger of football Asian-handicap picks.
+No database, no back office, no signing server — **the Git history is the ledger, and third-party timestamps are the notary**.
 
-## 信任故事
+## The trust story
 
-每一条推介都要回答同一个怀疑：「你怎么证明结果是出来之前就发了？」本账本用三重独立锚定回答：
+Every pick has to answer the same scepticism: "How do you prove it was published before the result came out?" This ledger answers with three independent anchors:
 
-1. **公开 PR + GitHub Actions 服务器时钟**——推介文件在公开 PR 中出现时，CI 以运行器时钟强制检查距开球至少 2 小时；Git commit 自带时间不是服务器见证，不作为门控依据；
-2. **补漏 manifest + OpenTimestamps**——CI 每晚把所有尚未入清单的推介文件 SHA-256 锚定到比特币区块链；延迟运行会在下一批自动补齐，回执保存在公开 `anchors` 分支，清单首尾相连；
-3. **追加式修正链**——结果文件只追加、永不覆盖；修正文件必须携带被修正文件的 SHA-256（`corrects` 字段），任何改动在 Git 历史里可见。
+1. **Public PR + GitHub Actions server clock** — when a pick file appears in a public PR, CI enforces a window of at least 2 hours before kickoff on the runner's clock; Git commit timestamps are locally settable metadata and are never used as the gating witness;
+2. **Catch-up manifests + OpenTimestamps** — every night CI anchors the SHA-256 hashes of all picks not yet covered by a manifest to the Bitcoin blockchain; a missed run is simply caught up in the next batch, receipts live on the public `anchors` branch, and manifests are chained head to tail;
+3. **Append-only correction chain** — result files are only ever appended, never overwritten; a correction must carry the SHA-256 of the record it corrects (the `corrects` field), so every change stays visible in Git history.
 
-结算分类和净收益**永远由程序计算**（52 用例黄金数据集回归保护），结果文件只能录入事实（比分、状态），写不了结论。
+Settlement classifications and net returns are **always computed by a frozen engine** (guarded by a 52-case golden-dataset regression); result files record facts only (scores, statuses) and cannot carry conclusions.
 
-## 五分钟自行验证
+## Verify it yourself in five minutes
 
 ```bash
-git clone <本仓库地址> && cd pattern-xi-ledger
+git clone https://github.com/rosebellwau8/pattern-xi-ledger.git && cd pattern-xi-ledger
 
-# 1. 找到引入推介的 commit，再查看公开 PR 的 Ledger integrity 运行时间
-git log --diff-filter=A --format=%H -- picks/2026/<推介文件>.json
+# 1. Find the commit that introduced the pick, then check the public PR's Ledger integrity run time
+git log --diff-filter=A --format=%H -- picks/2026/<pick-file>.json
 gh run list --commit <commit-sha> --workflow Check
 
-# 2. 切到公开锚定分支，核对文件哈希与当日清单一致
+# 2. Switch to the public anchoring branch and match the file hash against the manifest
 git switch anchors
-sha256sum picks/2026/<推介文件>.json && cat manifests/<日期>.txt
+sha256sum picks/2026/<pick-file>.json && cat manifests/<date>.txt
 
-# 3. 验证清单的比特币时间戳（pip install opentimestamps-client 后）
-ots verify manifests/<日期>.txt.ots
+# 3. Verify the manifest's Bitcoin timestamp (after pip install opentimestamps-client)
+ots verify manifests/<date>.txt.ots
 
-# 4. 从原始数据重建全部战绩，应无任何差异
+# 4. Rebuild the entire record from raw data; there must be no diff
 node scripts/settle.mjs && node scripts/standings.mjs && git diff --exit-code
 ```
 
-## 目录结构
+## Repository layout
 
 ```text
-picks/YYYY/<id>.json        推介（开球前提交；id 以开球 UTC 日期开头）
-results/YYYY/<id>.json      结果（终场后追加；修正为 <id>.rN.json + corrects 链）
-settlements/YYYY/<id>.json  派生文件：结算明细（程序生成，提交备查，CI 强制保持最新）
-manifests/YYYY-MM-DD.txt    anchors 分支：尚未锚定的推介哈希 + 前次清单哈希
-manifests/*.ots             anchors 分支：OpenTimestamps 比特币锚定回执
-standings/standings.json    派生文件：战绩投影（程序生成，可随时删除重建）
-src/settlement/             结算引擎（自 Pattern XI Task 6 逐字移植，52 用例黄金数据集保护）
-src/performance/            战绩投影（自 Pattern XI Task 7 移植，精确十进制、零起点最大回撤）
+picks/YYYY/<id>.json        Picks (committed pre-kickoff; id starts with the kickoff UTC date)
+results/YYYY/<id>.json      Results (appended after full time; corrections as <id>.rN.json + corrects chain)
+settlements/YYYY/<id>.json  Derived: settlement details (generated, committed for review, CI enforces freshness)
+manifests/YYYY-MM-DD.txt    anchors branch: hashes of not-yet-anchored picks + previous manifest hash
+manifests/*.ots             anchors branch: OpenTimestamps Bitcoin anchoring receipts
+standings/standings.json    Derived: standings projection (generated; can be deleted and rebuilt at any time)
+src/settlement/             Settlement engine (ported verbatim from Pattern XI Task 6; 52-case golden dataset)
+src/performance/            Standings projection (from Task 7; exact decimal, zero-origin max drawdown)
 scripts/                    import / validate / settle / standings / manifest / build-site
-tests/                      黄金数据集回归 + 账本规则测试
-site-dist/                  静态站构建产物（gitignore，部署时生成）
+tests/                      Golden-dataset regression + ledger rule tests
+site-dist/                  Static site build output (gitignored, generated at deploy time)
 ```
 
-## 常用命令（Node ≥ 24，零运行时依赖）
+## Everyday commands (Node ≥ 24, zero runtime dependencies)
 
 ```bash
-npm test                    # 52 用例黄金数据集 + 账本规则测试
-npm run typecheck           # TypeScript 严格静态检查
-npm run import -- export.json # 从生产端 v1 JSON 提取合规的公开推介
-npm run import -- --dry-run export.json # 仅预览，不写文件
-npm run publish -- export.json # 一键建分支、导入、开 PR，并在 CI 通过后自动合并
-npm run validate            # 校验全部数据与修正链（CI 对新推介强制 ≥2 小时规则）
-npm run settle              # 从推介+结果重算结算（派生文件）
-npm run standings           # 重建战绩投影（派生文件）
-npm run manifest            # 为所有尚未锚定的推介生成补漏清单
-npm run build               # 生成静态站 site-dist/
+npm test                                # 52-case golden dataset + ledger rule tests
+npm run typecheck                       # strict TypeScript static check
+npm run import -- export.json           # extract compliant public picks from a production v1 JSON export
+npm run import -- --dry-run export.json # preview only, write nothing
+npm run publish -- export.json          # branch, import, open a PR, and auto-merge once CI passes
+npm run validate                        # validate all data and correction chains (CI enforces the ≥2h rule on new picks)
+npm run settle                          # recompute settlements from picks + results (derived files)
+npm run standings                       # rebuild the standings projection (derived files)
+npm run manifest                        # build a catch-up manifest for all not-yet-anchored picks
+npm run build                           # build the static site into site-dist/
 ```
 
-## 运营流程
+## Operating procedures
 
-**发推介（开球前 ≥2 小时）**：生产端导出 `production-public-export.v1` →
-`npm run publish -- export.json`。该命令会建分支、导入、校验、重建派生文件、推送并开公开 PR，
-随后等待必需检查通过自动合并。导入器会移除排名、模式和内部备注，
-只保留比赛身份、最终方向、盘口、赔率与来源；导出时不足两小时的场次会明确跳过。CI 以公开 PR
-检查时的 GitHub 服务器时钟再次强制门控，并拒绝修改或删除已公布的 pick/result JSON。
+**Publishing a pick (≥2 hours before kickoff)**: export `production-public-export.v1` from the production side →
+`npm run publish -- export.json`. The command creates a branch, imports, validates, rebuilds derived files, pushes and opens
+a public PR, then auto-merges once required checks pass. The importer strips rankings, patterns and internal notes, keeping
+only fixture identity, final direction, line, price and source; fixtures under two hours away at export time are explicitly
+skipped. CI enforces the gate again on the public PR using GitHub's server clock, and rejects modification or deletion of
+published pick/result JSON.
 
-**记结果（终场后）**：写 `results/YYYY/<id>.json`（只写比分/状态等事实）→
-`npm run validate && npm run settle && npm run standings` → 把派生的
-`settlements/`、`standings/` 变更一起提交进同一个 PR，评审人能在 diff 里直接看到程序算出的结论。
-CI 会拒绝在开球前新增结果文件。
+**Recording a result (after full time)**: write `results/YYYY/<id>.json` (facts only — scores/status) →
+`npm run validate && npm run settle && npm run standings` → commit the derived `settlements/` and `standings/` changes in
+the same PR, so reviewers see the computed outcome directly in the diff. CI rejects result files added before kickoff.
 
-**修正（发现错误时）**：新增 `<id>.r2.json`，`corrects` 填被修正文件的 SHA-256，
-绝不改动旧文件。四类修正语义与证据要求见 [CONVENTIONS.md](CONVENTIONS.md)。
+**Correcting an error**: add `<id>.r2.json` with `corrects` set to the corrected file's SHA-256; never touch the old file.
+The four correction semantics and their evidence requirements are documented in [CONVENTIONS.md](CONVENTIONS.md).
 
-## 上线操作清单（对外动作，一次性）
+## Launch checklist (external actions, one-off)
 
-> ✅ 已于 2026-09-02 执行完毕（单人维护，必需批准数调整为 0，其余保护全量生效），
-> 实测记录见 [LAUNCH.md](LAUNCH.md)。
+> ✅ Executed on 2026-09-02 (single maintainer, required approvals set to 0, all other protections in force) —
+> the measured record is in [LAUNCH.md](LAUNCH.md).
 
 ```bash
-# 1. 创建公开仓库并推送（账本必须从第一个 commit 起就是干净历史）
+# 1. Create the public repository and push (the ledger must be a clean history from the first commit)
 gh repo create pattern-xi-ledger --public --source=. --push
 
-# 2. 启用 GitHub Pages（Settings → Pages → Source: GitHub Actions）
+# 2. Enable GitHub Pages (Settings → Pages → Source: GitHub Actions)
 
-# 3. 分支保护（Settings → Branches → main）：
+# 3. Branch protection (Settings → Branches → main):
 #    - Require a pull request before merging
-#    - Required approvals: 0（单人维护；有第二位协作者后再改为 1）
-#    - 勾选包括 Require status checks: Check / Ledger integrity
+#    - Required approvals: 0 (single maintainer; raise to 1 when a second collaborator joins)
+#    - Require status checks: Ledger integrity (workflow: Check)
 ```
 
-之后 CI 全自动：PR 校验、每日锚定到公开 `anchors` 分支、站点部署。`main` 只接受通过评审和必需检查的 PR；自动锚定不会绕过它。
+After that CI runs itself: PR validation, nightly anchoring to the public `anchors` branch, site deployment.
+`main` accepts only PRs that pass review and the required checks; automatic anchoring never bypasses them.
 
-## 诚实的局限
+## Honest limitations
 
-账本证明的是「推介内容在公开 PR 检查时已存在且当时距开球至少两小时」，合并后内容保持追加式。
-**赔率是运营者申报的**（来源字段必填），
-建议对赔率页面另存第三方快照（如 archive.org Save Page Now）作旁证。
-这两个问题没有免费的完美解，任何系统（包括更复杂的系统）都一样。
+The ledger proves that a pick's content already existed — at least two hours before kickoff — when its public PR check ran,
+and that history stays append-only after the merge. **Prices are declared by the operator** (a source field is mandatory);
+third-party snapshots of the odds page (e.g. archive.org Save Page Now) are recommended as corroboration.
+Neither problem has a free perfect solution, in any system, including more elaborate ones.
 
-## 与 Pattern XI 原项目的关系
+## Relationship to the original Pattern XI project
 
-原仓库（`E:\PatternXI`）保留为设计档案，本项目的架构决策与移植清单见
-[DESIGN.md](DESIGN.md)，运营规则见 [CONVENTIONS.md](CONVENTIONS.md)。
+The original repository (`E:\PatternXI`) is kept as a design archive. For this project's architectural decisions and the
+porting manifest see [DESIGN.md](DESIGN.md); for operating rules see [CONVENTIONS.md](CONVENTIONS.md).
