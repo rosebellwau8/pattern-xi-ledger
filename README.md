@@ -1,31 +1,19 @@
 # Pattern XI — Public Picks Ledger
 
-A public, prospective, auditable ledger of football Asian-handicap picks. No database, no back office, no dynamic services; the static site is just a view over the public Git ledger.
+A public, prospective, auditable ledger of football Asian-handicap picks.
+No database, no back office, no dynamic services — the Git history is the ledger, and the static site is a view over it.
 
-## Three-layer evidence model
+**Live site:** <https://rosebellwau8.github.io/pattern-xi-ledger/>
 
-1. **Public publication witness**
-   - The exact version of a pick first appears in a public GitHub PR;
-   - GitHub Actions' `Ledger integrity` runs against that PR's exact head SHA and file contents;
-   - publication time is defined as the GitHub server-side `startedAt` of the first job attempt in which that exact SHA passed the check;
-   - that time must be at least 2 hours before `kickoff_utc`. If the pick is modified, its SHA changes and it must be checked again;
-   - merging only admits the same, already-public, already-verified version into the official ledger; it does not define first publication.
+## What makes this ledger different
 
-2. **Independent cryptographic timestamp**
-   - Every manifest records the corresponding `main` commit SHA, the SHA-256 of the previous manifest, and the paths and SHA-256 hashes of all official pick files in that `main` state;
-   - OpenTimestamps anchors this complete ledger-state snapshot to Bitcoin;
-   - it proves that the complete state existed before a given Bitcoin time anchor, and provides an independent record for detecting later history alterations;
-   - it is the second cryptographic anchor, not the primary source of the per-pick two-hours-before-kickoff proof.
+Every tips record claims to be honest. This one is built so that you can check it:
 
-3. **Append-only correction provenance**
-   - Published pick/result files must never be overwritten, deleted or renamed;
-   - result corrections are appended as `.rN.json`, with `corrects` citing the exact-byte SHA-256 of the previous version;
-   - correction chains must be linear, unforked, and must actually change facts;
-   - settlements and standings are always rebuilt deterministically from raw facts by programs, with settlement semantics guarded by the 52-case golden dataset.
-
-Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests provide an independent cryptographic record of previously published ledger states.
-
-Git history, branch protection and append-only validation sharply raise the cost and visibility of after-the-fact changes, but the repository owner still theoretically controls the GitHub configuration, so GitHub history is not described as cryptographically absolutely tamper-proof. Ordinary Git author/committer timestamps are locally settable Git metadata and carry no publication proof.
+1. **Public publication witness.** A pick only counts if its exact version passed the `Ledger integrity` check in a public PR, at a GitHub server event time at least 2 hours before kickoff. Git commit timestamps — trivially fakeable — are never used as proof.
+2. **Independent cryptographic timestamp.** Every day the complete ledger state (every pick's hash, the `main` commit, the previous manifest's hash) is anchored to the Bitcoin blockchain through OpenTimestamps. Past states cannot be quietly rewritten without breaking the anchor chain.
+3. **Append-only corrections.** Published picks and results can never be edited, deleted or renamed. A correction is a new file citing the exact SHA-256 of what it corrects, in a linear, unforked chain.
+4. **Conclusions are computed, never typed.** Win/loss classification and net returns are always derived by a frozen settlement engine guarded by a 52-case golden-dataset regression. Result files carry facts only (scores, statuses) — there is no field in which a human could write a conclusion.
+5. **Everything rebuilds from raw data.** `settle && standings && git diff --exit-code` must be a no-op on every PR, and the static site is generated deterministically with zero client-side scripts.
 
 ## Verify it yourself in five minutes
 
@@ -50,8 +38,6 @@ ots verify manifests/<date>.txt.ots
 node scripts/settle.mjs && node scripts/standings.mjs && git diff --exit-code
 ```
 
-Step 1 yields a content-version identifier, not a trusted time; the trusted first-layer time witness comes from the GitHub-hosted Actions job event of the public PR in step 2.
-
 ## Repository layout
 
 ```text
@@ -71,38 +57,33 @@ site-dist/                  Static site build output (gitignored, generated at d
 ## Everyday commands (Node ≥ 24, zero runtime dependencies)
 
 ```bash
-npm test
-npm run typecheck
-npm run import -- export.json
-npm run import -- --dry-run export.json
-npm run publish -- export.json
-npm run validate
-npm run settle
-npm run standings
-npm run manifest -- <UTC-date> <main-commit-sha>
-npm run build
+npm test                                # full suite: golden dataset, ledger rules, evidence flow, site
+npm run typecheck                       # strict TypeScript static check
+npm run import -- export.json           # extract compliant public picks from a production v1 JSON export
+npm run import -- --dry-run export.json # preview only, write nothing
+npm run publish -- export.json          # branch, import, open a PR, and auto-merge once CI passes
+npm run validate                        # validate all data and correction chains
+npm run settle                          # recompute settlements from picks + results (derived files)
+npm run standings                       # rebuild the standings projection (derived files)
+npm run manifest -- <UTC-date> <main-commit-sha>   # build a complete ledger-state manifest
+npm run build                           # build the static site into site-dist/
 ```
 
 ## Operating procedures
 
-**Publishing a pick**: export `production-public-export.v1` on the production side → `npm run publish -- export.json`. The script creates a branch, extracts the final direction/line/price, validates, rebuilds derived files, pushes and opens a public PR. Fixtures under two hours away at export time are skipped up front; the remote `Ledger integrity` then checks the exact PR head SHA against the GitHub server-side event time of that job attempt. The merged version must be identical to the version that passed the check; only after merging does a pick enter the official ledger and the static site.
+**Publishing a pick (≥2 hours before kickoff)**: export `production-public-export.v1` on the production side → `npm run publish -- export.json`. The script creates a branch, extracts the final direction/line/price, validates, rebuilds derived files, pushes and opens a public PR. Fixtures under two hours away at export time are skipped. The remote `Ledger integrity` then gates the exact PR head SHA against its GitHub server-side job event time; the merged version must be identical to the version that passed the check.
 
-**Recording a result**: after full time, add `results/YYYY/<id>.json` (facts only — scores, statuses) → `npm run validate && npm run settle && npm run standings` → put the derived `settlements/` and `standings/` changes into the same PR. CI rejects results added before kickoff.
+**Recording a result (after full time)**: write `results/YYYY/<id>.json` (facts only — scores, statuses) → `npm run validate && npm run settle && npm run standings` → put the derived `settlements/` and `standings/` changes into the same PR. CI rejects results added before kickoff.
 
-**Correcting**: add `<id>.rN.json` with `corrects` set to the previous version file's exact SHA-256; never overwrite the old file. Detailed rules are in [CONVENTIONS.md](CONVENTIONS.md).
-
-**Anchoring**: every day GitHub Actions generates a complete pick ledger snapshot from `origin/main`, writes it to the public `anchors` branch and runs the OpenTimestamps stamp/upgrade. A missed cron run misses no historical picks; the next snapshot still covers every official pick up to its `main_commit_sha`.
-
-## GitHub protection settings
-
-`main` must go through PRs; required approvals are 0 for a single maintainer; the required check is `Ledger integrity` in strict mode; administrators are protected too; force pushes and branch deletion are forbidden. The actual configuration and the pre-freeze verification record are in [LAUNCH.md](LAUNCH.md).
-
-These controls raise the cost and visibility of anomalous changes; they do not mean the repository owner loses theoretical control over the GitHub configuration.
+**Correcting an error**: add `<id>.rN.json` with `corrects` set to the previous version file's exact SHA-256; never overwrite the old file. The four correction semantics and their evidence requirements are documented in [CONVENTIONS.md](CONVENTIONS.md).
 
 ## Honest limitations
 
-- Scores and prices are entered by the operator under the current schema and workflow; this ledger does not provide third-party verification of score or price authenticity.
-- GitHub account, GitHub Actions, Pages and OpenTimestamps remain operational dependencies; having no database, back office, server private keys or dynamic services **greatly reduces the operational attack surface**, but does not eliminate it entirely.
-- The first layer proves: an exact pick version passed its check in a public PR at a GitHub server event time at least two hours before kickoff. The second layer proves: a complete ledger state existed before a Bitcoin time anchor.
+- Scores and prices are entered by the operator under the current schema and workflow; the ledger proves when each pick was published, not what a third-party page showed at the time. Third-party snapshots (e.g. archive.org Save Page Now) are recommended as corroboration.
+- The GitHub account, Actions, Pages and OpenTimestamps are operational dependencies; the serverless design greatly reduces — but does not eliminate — the operational attack surface.
+- Branch protection and append-only rules make retrospective alteration costly and visible; this is not a claim of cryptographic absolute immutability.
 
-For architectural decisions see [DESIGN.md](DESIGN.md); for operating rules see [CONVENTIONS.md](CONVENTIONS.md).
+## Further reading
+
+- [CONVENTIONS.md](CONVENTIONS.md) — the ledger's operating rules
+- [DESIGN.md](DESIGN.md) — the three-layer evidence model in detail

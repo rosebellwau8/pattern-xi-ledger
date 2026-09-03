@@ -1,77 +1,82 @@
-# 上线记录（LAUNCH）
+# Launch Record (LAUNCH)
 
-本文件是 2026-09-02 上线动作的存档：做了什么、实测结果如何、为什么这么配置。
-将来对账本运行记录有疑问时，以本文件、公开 PR/Actions 事件和已锚定 manifest 共同复核；
-普通 Git commit 时间不作为服务器时间见证。
+This file is the archive of the 2026-09-02 launch actions: what was done, what the measured results were, and why it is configured this way.
+When questions arise about the ledger's operating record, cross-check this file, the public PR/Actions events and the anchored manifests;
+ordinary Git commit times are not treated as server time witnesses.
 
-## 地址
+## Addresses
 
-- 公开仓库：<https://github.com/rosebellwau8/pattern-xi-ledger>
-- 公开账本站点（GitHub Pages）：<https://rosebellwau8.github.io/pattern-xi-ledger/>
+- Public repository: <https://github.com/rosebellwau8/pattern-xi-ledger>
+- Public ledger site (GitHub Pages): <https://rosebellwau8.github.io/pattern-xi-ledger/>
 
-## 上线时间线（2026-09-02，时间取自 GitHub 实测，UTC）
+## Launch timeline (2026-09-02, times measured on GitHub, UTC)
 
-| 时间 | 事件 |
+| Time | Event |
 |---|---|
-| 07:34 | 创建公开仓库并推送 `main`（提交 `df93957` + `9711a19`），Check 首跑通过 |
-| 07:36 | Deploy site 首次部署成功，Pages 站点上线 |
-| 07:48 | Anchor manifest 锚定演练**首次运行失败**：当天无推介时清单脚本未正确跳过 |
-| 07:51 | 提交 `c953c19`（fix: skip stamping when daily manifest is empty）修复空清单跳过逻辑，Check + Deploy site 通过 |
-| 07:52 | Anchor manifest 二次演练**成功**：正确跳过清单生成，公开 `anchors` 分支创建完成 |
+| 07:34 | Public repository created and `main` pushed (commits `df93957` + `9711a19`); first Check run passed |
+| 07:36 | First Deploy site run succeeded; Pages site live |
+| 07:48 | First Anchor manifest rehearsal **failed**: the manifest script did not skip correctly when there were no picks that day |
+| 07:51 | Commit `c953c19` (fix: skip stamping when daily manifest is empty) fixed the empty-manifest skip; Check + Deploy site passed |
+| 07:52 | Second Anchor manifest rehearsal **succeeded**: skip logic worked; the public `anchors` branch was created |
 
-如实记录：锚定链路经历过一次真实的"失败 → 修复 → 验证"，修复本身在 Git 历史可见（`c953c19`）。
+Recorded as it happened: the anchoring pipeline went through a real "fail → fix → verify" cycle, and the fix itself is visible in Git history (`c953c19`).
 
-## main 分支保护（2026-09-02 定稿配置，经 GitHub API 实测核对）
+## `main` branch protection (finalised 2026-09-02, verified via the GitHub API)
 
-| 配置项 | 值 | 这意味着什么 |
+| Setting | Value | What it means |
 |---|---|---|
-| 必须通过 PR | ✅ 开启 | 任何变更（包括文档）都不能直接 push 到 `main`，必须开 PR |
-| 必需人工批准数 | **0** | 单人维护：PR 评审由运营者自己把关；机器检查仍然全量强制（见下行） |
-| 必需状态检查 | `Ledger integrity`（严格模式） | 最终 PR head SHA 必须通过全量测试、服务器事件时间两小时门控、追加式校验和派生一致性检查 |
-| 管理员同样受保护 | ✅ 开启 | 当前配置下 owner 也受 PR 流程约束；owner 理论上仍控制仓库配置 |
-| 强制推送（force push） | ❌ 禁止 | 当前规则禁止重写 `main`；这提高成本和可见性，但不等同密码学不可篡改 |
-| 删除分支 | ❌ 禁止 | `main` 不能被删除 |
+| Require pull request | ✅ On | No change (including docs) can be pushed directly to `main`; a PR is mandatory |
+| Required approvals | **0** | Single maintainer: PR review is the operator's own responsibility; machine checks remain fully enforced (see below) |
+| Required status checks | `Ledger integrity` (strict) | The final PR head SHA must pass the full tests, the server-event-time two-hour gate, append-only validation and the derived-consistency check |
+| Include administrators | ✅ On | Under the current configuration the owner is also bound by the PR process; the owner still theoretically controls the repository configuration |
+| Force pushes | ❌ Disabled | Current rules forbid rewriting `main`; this raises cost and visibility but is not cryptographic tamper-proofing |
+| Deletions | ❌ Disabled | `main` cannot be deleted |
 
-## CI 验证结果
+## CI verification results
 
-- **测试**：上线时 14 项全部通过；后续已扩展至覆盖 52 用例黄金结算数据集、生产导入/发布、完整状态 manifest 和站点回归。
-- **工作流**：Check（PR/push 完整性）、Deploy site（Pages 部署）、Anchor manifest（每日锚定）最终全绿。
-- **anchors 分支**：已创建并推送成功。当前工作流每日 00:15 UTC 对 `origin/main` 的完整 pick ledger state 生成 manifest 并执行 OpenTimestamps；每份快照含 main SHA、全部 pick 哈希和前序 manifest 哈希。
-- **追加式校验**：已公布的 `picks/` 与 `results/` JSON 一旦合并，任何修改、删除、重命名都会被 CI 拒绝（提交 `9711a19` 引入 `scripts/validate-pr.mjs`）。
-- **Pages 实测**：`/`、`/track-record.html`、`/verification.html` 三页均返回 HTTP 200。
+- **Tests**: all 14 passed at launch; the suite has since grown to cover the 52-case golden settlement dataset, production import/publish, complete-state manifests and site regressions.
+- **Workflows**: Check (PR/push integrity), Deploy site (Pages deployment) and Anchor manifest (daily anchoring) all green.
+- **`anchors` branch**: created and pushed. The workflow runs daily at 00:15 UTC, manifests the complete pick ledger state at `origin/main` and stamps it through OpenTimestamps; every snapshot contains the main SHA, all pick hashes and the previous manifest's hash.
+- **Append-only validation**: once merged, any modification, deletion or renaming of published `picks/` or `results/` JSON is rejected by CI (introduced in commit `9711a19`, `scripts/validate-pr.mjs`).
+- **Pages measured**: `/`, `/track-record.html` and `/verification.html` all return HTTP 200.
 
-## 历史运行记录
+## Historical run record
 
-- 截至记录时，首个提交 `df93957` 未经历已知的 rebase 或 force push。这是公开运行记录，
-  不是 GitHub 历史在密码学上绝对不可改的声明。
-- 上线时本地与远端完全同步，工作区干净；账本从第一个 commit 起即为干净历史。
+- As of this record, the first commit `df93957` has not been rebased or force-pushed to our knowledge. This is a public statement of the operating record, not a claim that GitHub history is cryptographically immutable.
+- At launch the local and remote repositories were fully in sync with a clean working tree; the ledger has been a clean history from its first commit.
+- 2026-09-02: the three historical planning documents under `docs/plans/` were removed from the tree to keep the public surface minimal. They contained no credentials or personal data — only design deliberation — and remain reachable in Git history. History was deliberately not rewritten: the anchored manifests and PR witness events reference the existing SHAs, and a purge would cost more evidence than it protects.
+- 2026-09-02: a site-only newsletter signup slot was added on operator instruction — a provider-agnostic HTML POST form (wired to Buttondown's no-JavaScript embed endpoint) with privacy/consent wording rendered beside it. No backend, no client-side JavaScript, no payments; it plays no role in the evidence model. The entire provider wiring lives in the single `NEWSLETTER` object in `scripts/build-site.mjs`; setting `enabled: false` removes the section from the built pages.
+- 2026-09-02: the public site was restyled to the approved dark dashboard design (static mockups for the overview, full-record and verification pages) by porting them into `scripts/build-site.mjs`. Presentation only — no backend, no client-side JavaScript, no ledger/data-model change. Every mockup figure is now computed from ledger data: official-window panels come from the frozen projection engine over `FORMAL_START_UTC` (null during the shadow run, so they legitimately read zero), while the upcoming table, curve and record pages render the whole current ledger.
 
-## 日常运营流程（单人模式）
+## Daily operating flow (single-maintainer mode)
 
-1. **发推介**：生产端导出 JSON → `npm run publish -- export.json` → 脚本自动建分支、导入、
-   校验、推送和开公开 PR。精确 PR head SHA 首次成功的 `Ledger integrity.startedAt` 定义
-   publication time，必须距 kickoff ≥2 小时。通过后自动 merge（approval=0）只是将同一版本正式入账。
-2. **记结果（终场后）**：写 `results/YYYY/<id>.json`（只录比分/状态等事实）→
-   `npm run validate && npm run settle && npm run standings` →
-   派生的 `settlements/`、`standings/` 变更随同一个 PR 提交，评审时在 diff 里直接看到程序算出的结论。
-3. **修正错误**：新增 `<id>.rN.json` 并在 `corrects` 字段填被修正文件的 SHA-256，绝不改动旧文件。
+1. **Publishing a pick**: export JSON on the production side → `npm run publish -- export.json` → the script automatically branches, imports, validates, pushes and opens a public PR. The `Ledger integrity.startedAt` of the first successful attempt against the exact PR head SHA defines publication time and must be ≥2 hours before kickoff. The automatic merge afterwards (approvals = 0) only formally admits the same version to the ledger.
+2. **Recording a result (after full time)**: write `results/YYYY/<id>.json` (facts only — scores/statuses) → `npm run validate && npm run settle && npm run standings` → commit the derived `settlements/` and `standings/` changes in the same PR, so reviewers see the computed outcome directly in the diff.
+3. **Correcting an error**: add `<id>.rN.json` with the corrected file's SHA-256 in `corrects`; never modify the old file.
 
-## 单人模式的取舍与将来收紧点
+## Single-maintainer trade-offs and future tightening
 
-- **approval=0 是单人的现实取舍**：GitHub 规则不允许 PR 作者批准自己的 PR，
-  因此在只有一位维护者的情况下无法启用"1 人批准"。当前人工评审由运营者自审 PR diff；
-  机器强制（两小时门控、追加式、必需检查、管理员受保护、禁强推）不受影响。
-- **将来若有第二位协作者**：应将必需批准数改为 1（Settings → Branches → main →
-  Require 1 approval），恢复 README「上线操作清单」原建议的互相评审强度。
-- **试运行 → 正式期**：站点当前展示 SHADOW RUN 试运行横幅；正式期开始只需一次声明
-  commit（见 DESIGN.md），90 天公开验证时钟自该声明起算。
+- **Approvals = 0 is the single-maintainer reality**: GitHub does not allow a PR author to approve their own PR, so "1 approval" cannot be enabled with one maintainer. Human review is currently the operator self-reviewing the PR diff; machine enforcement (two-hour gate, append-only, required checks, administrators protected, no force push) is unaffected.
+- **If a second collaborator joins**: raise required approvals to 1 (Settings → Branches → main → Require 1 approval) to restore mutual review strength.
+- **Shadow run → formal period**: the site currently shows the SHADOW RUN banner; starting the formal period takes a single declaration commit (see DESIGN.md), from which the 90-day public-validation clock runs.
 
-## 当前证据模型
+## Current evidence model
 
-本项目采用 **Three-layer evidence model**：公开 PR + GitHub-hosted Actions 对精确 SHA 的
-服务器事件是第一层 publication witness；完整 ledger-state manifest + OpenTimestamps/Bitcoin
-是第二层独立密码学时间戳；追加式修正链与确定性重建是第三层 provenance。
+This project uses the **three-layer evidence model**: a public PR plus the GitHub-hosted Actions server event for the exact SHA is the first-layer publication witness; the complete ledger-state manifests plus OpenTimestamps/Bitcoin are the second-layer independent cryptographic timestamp; append-only correction chains with deterministic rebuilds are the third-layer provenance.
 
-Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests
-provide an independent cryptographic record of previously published ledger states. 静态架构 greatly
-reduced the operational attack surface，但仍依赖 GitHub account、Actions、Pages 和 OpenTimestamps。
+Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests provide an independent cryptographic record of previously published ledger states. The serverless architecture greatly reduced the operational attack surface, but the system still depends on the GitHub account, Actions, Pages and OpenTimestamps.
+
+## Architecture freeze record (2026-09-02, UTC)
+
+After the three-layer evidence model was merged and passed freeze-acceptance, the **architecture is frozen**: no new features; the project enters the preparation phase for the formal 90-day public validation, which starts from a future declaration commit (see DESIGN.md).
+
+Freeze-acceptance evidence (all publicly checkable GitHub measurements):
+
+| Item | Evidence |
+|---|---|
+| Implementation merged | [PR #4](https://github.com/rosebellwau8/pattern-xi-ledger/pull/4) (merge commit `bd63909`); `Ledger integrity` passed on the exact head SHA |
+| Real publication witness | [Check run 33628156164](https://github.com/rosebellwau8/pattern-xi-ledger/actions/runs/33628156164/job/100240744760): for head `b13803a45c35e`, the `Ledger integrity` job's server-side `startedAt` = `2026-09-02T12:06:55Z`; repository visibility, run head SHA and job time all cross-checked via the API |
+| Anchoring rehearsal | [Anchor manifest run 33628289788](https://github.com/rosebellwau8/pattern-xi-ledger/actions/runs/33628289788): the `anchors` branch produced the first v2 complete snapshot `manifests/2026-09-02.txt` (`main_commit_sha bd63909de1e5`, `previous_manifest_sha256 NONE`, `pick_count 0`) with its `.ots` receipt; Bitcoin confirmation is asynchronous by OpenTimestamps design and completed by the weekly `ots upgrade` |
+| Local verification | 33 tests, typecheck, `validate`, deterministic derived rebuild (no-op) and deterministic site build all passed; the overclaim sweep found no leftovers |
+| Branch protection re-check | Measured via the GitHub API: required check `Ledger integrity` (strict), administrators included, no force pushes, no deletions, PR + 0 approvals — matching the finalised table above |
+| Site deployment | Pages deployed `bd63909` successfully; <https://rosebellwau8.github.io/pattern-xi-ledger/> measured serving the English three-layer-model content over enforced HTTPS |

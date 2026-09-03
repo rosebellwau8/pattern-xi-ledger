@@ -1,80 +1,56 @@
-# 账本规则（CONVENTIONS）
+# Ledger Rules (CONVENTIONS)
 
-本文件是账本的「游戏规则」。规则一旦发布，修改本身也走 PR 并在 Git 历史可见。
-规则违反 = CI 拒绝合并（fail-closed），不存在警告级违规。
+This file is the ledger's rulebook. Once published, any change to these rules goes through a PR and is visible in Git history.
+A rule violation means CI refuses to merge (fail-closed); there are no warning-level violations.
 
-## 1. 发布规则
+## 1. Publication rules
 
-- **Publication time** 定义为：最终被 merge 的该版本 pick，在公开 PR 中首次成功通过
-  `Ledger integrity` 的 job attempt 之 GitHub 服务器侧 `startedAt`。该 job 必须对 PR 的精确
-  head SHA 和文件内容运行，且此时间距 `kickoff_utc` 至少 2 小时。
-- PR 中的 pick 一旦修改便产生新 SHA，必须重新运行并通过检查。最终 merge 的版本必须与通过
-  两小时检查的版本一致；merge 只把已经公开、已经验证的记录纳入正式 ledger 和静态站，
-  不定义首次 publication。
-- Git author/committer timestamp 是可由本地设置、amend 或 rebase 改变的普通元数据，
-  不得作为 publication time 或开球前证明。第一层时间见证仅来自公开 PR 与 GitHub-hosted
-  Actions 对精确 SHA 的服务器事件记录。
-- 已合并的 `picks/**/*.json` 与 `results/**/*.json` 不得修改、删除或重命名；CI 对 PR diff
-  强制执行追加式约束。结果错误只能新增 `.rN.json` 修正文件。
-- **全量公布义务**：所有实际下注或推荐的推介都必须入账，不允许选择性公布。
-  这是账本可信的前提，也是唯一无法用代码强制、只能靠规则和声誉约束的一条。
-- 单位注固定为 1，不记录滚动注、串关或仓位管理。
-- 市场范围：仅整场亚洲让球盘（`market: "asian_handicap"`），只支持 HOME/AWAY 选择。
+- **Publication time** is defined as the GitHub server-side `startedAt` of the job attempt in which the exact version of a pick first passed `Ledger integrity` in a public PR. That job must run against the PR's exact head SHA and file contents, and the time must be at least 2 hours before `kickoff_utc`.
+- If a pick in a PR is modified, its SHA changes and the check must run and pass again. The version finally merged must be identical to the version that passed the two-hour check; merging only admits an already-public, already-validated record into the formal ledger and the static site — it does not define first publication.
+- Git author/committer timestamps are ordinary metadata — locally settable and changeable via amend or rebase — and are never used as publication time or pre-kickoff proof. The first-layer time witness comes only from a public PR and the GitHub-hosted Actions server-side event record for the exact SHA.
+- Merged `picks/**/*.json` and `results/**/*.json` must never be modified, deleted or renamed; CI enforces the append-only constraint on PR diffs. A wrong result can only be corrected by adding a `.rN.json` correction file.
+- **Full-disclosure obligation**: every pick actually tipped or staked must be recorded; selective publication is not allowed. This is the precondition for the ledger's credibility — and the one rule that code cannot enforce, only rules and reputation can.
+- The unit stake is fixed at 1; rolling stakes, accumulators and bankroll management are not recorded.
+- Market scope: full-match Asian handicap only (`market: "asian_handicap"`), HOME/AWAY selections only.
 
-GitHub history、branch protection 与追加式校验用于显著提高事后改动的成本和可见性；仓库 owner
-理论上仍控制仓库配置，因此这些机制不被描述为密码学上的绝对不可篡改。独立密码学记录由公开
-`anchors` 分支上的完整 ledger-state manifest 与 OpenTimestamps 提供。
+GitHub history, branch protection and append-only validation sharply raise the cost and visibility of after-the-fact changes; the repository owner still theoretically controls the repository configuration, so these mechanisms are not described as cryptographically absolutely tamper-proof. The independent cryptographic record is provided by the complete ledger-state manifests and OpenTimestamps receipts on the public `anchors` branch.
 
-## 2. 推介文件规则
+## 2. Pick file rules
 
-- 文件名与内容强绑定：`picks/<年>/<开球UTC日期>-<队名slug>-ah.json`，
-  `id` 必须以开球 UTC 日期开头。
-- 赔率必填两个字段：`published_price`（公布口径）与 `published_price_format`
-  （`DECIMAL_ODDS` 或 `HONG_KONG_ODDS`）；`normalized_decimal_price` 由脚本核对
-  （港赔 + 1 = 十进制），杜绝口径漂移。
-- `price_source` 必填（如 "Pinnacle pre-match"）。这是运营者申报字段——账本证明
-  在何时公开了什么内容，不对赔率页面或第三方赔率进行独立核验。
-- 未知字段直接拒绝（allowlist），不给「顺手加个字段」留口子。
+- The file name is tightly bound to its content: `picks/<year>/<kickoff-UTC-date>-<team-slugs>-ah.json`, and `id` must start with the kickoff UTC date.
+- Two price fields are mandatory: `published_price` (as published) and `published_price_format` (`DECIMAL_ODDS` or `HONG_KONG_ODDS`); `normalized_decimal_price` is verified by script (Hong Kong odds + 1 = decimal), eliminating format drift.
+- `price_source` is mandatory (e.g. "Pinnacle pre-match"). This is an operator-declared field — the ledger proves what was published and when; it does not independently verify the odds page or third-party prices.
+- Unknown fields are rejected outright (allowlist); there is no room for "just one extra field".
 
-## 3. 结果录入规则（只录事实，不写结论）
+## 3. Result recording rules (facts only, never conclusions)
 
-结果文件**只能包含事实字段**：比分、状态、时间戳、中断处置。分类（赢/半赢/走/
-半输/输/无效）与净收益由 `settle.mjs` 调用冻结的结算引擎计算，人工写了也会被
-忽略——因为根本没有那个字段。
+Result files may contain **fact fields only**: scores, statuses, timestamps, interruption dispositions. Classifications (win / half-win / push / half-loss / loss / void) and net returns are computed by `settle.mjs` calling the frozen settlement engine; a hand-written conclusion would be ignored — the field simply does not exist.
 
-状态映射（对应 Settlement Rules v1）：
+Status mapping (per Settlement Rules v1):
 
-| status | 必填 | 引擎行为 |
+| status | Required fields | Engine behaviour |
 |---|---|---|
-| `PLAYED` | `home_score`、`away_score` | 正常结算；若 `actual_kickoff_at` 比冻结开球时间晚超 48h 判 VOID |
-| `POSTPONED` | 有新开球：`actual_kickoff_at`；完赛时另填 `final_status: "FINISHED"` 与比分；无新开球：`status_determined_at` | 超 48h VOID，否则 PENDING；48h 内完赛正常结算 |
-| `CANCELLED` | — | 直接 VOID |
-| `ABANDONED` | `actual_kickoff_at`、`interruption_disposition`；`RESUMED_SAME_FIXTURE` 另需 `regulation_completed_at` 与比分；`UNKNOWN` 需 `status_determined_at` | 同场 48h 内完赛可结算；重赛/弃赛 VOID；UNKNOWN 超 168h VOID |
+| `PLAYED` | `home_score`, `away_score` | Settles normally; VOID if `actual_kickoff_at` is more than 48h after the frozen kickoff |
+| `POSTPONED` | New kickoff: `actual_kickoff_at`; on completion also `final_status: "FINISHED"` and the score; no new kickoff: `status_determined_at` | VOID beyond 48h, otherwise PENDING; normal settlement if completed within 48h |
+| `CANCELLED` | — | VOID immediately |
+| `ABANDONED` | `actual_kickoff_at`, `interruption_disposition`; `RESUMED_SAME_FIXTURE` also needs `regulation_completed_at` and the score; `UNKNOWN` needs `status_determined_at` | Settles if the same fixture completes within 48h; replayed or abandoned fixtures are VOID; UNKNOWN is VOID beyond 168h |
 
-## 4. 修正规则（追加式，永不覆盖）
+## 4. Correction rules (append-only, never overwrite)
 
-- 结果只追加：修正写入新文件 `results/<年>/<id>.rN.json`（N 顺延），
-  `corrects` 字段填**被修正文件的精确 SHA-256**；脚本拒绝断链、分叉、空修正。
-- 修正必须注明非空理由（`note`）与 `correction_kind`，并符合四类语义之一（沿袭 Settlement Rules v1）。
-  除 `SETTLEMENT_LOGIC_ERROR` 外，还必须提供至少一个 `evidence_refs` 来源：
-  1. `SOURCE_DATA_ERROR` — 比分源录错（需更权威来源的比分，附证据说明）；
-  2. `SETTLEMENT_LOGIC_ERROR` — 引擎/规则应用错误（需给出正确比分重算）；
-  3. `OFFICIAL_RESULT_CORRECTION` — 官方改判比分（证据等级：
-     竞赛主办方 > 官方指定数据商 > 俱乐部官方，普通比分网站不算权威）；
-  4. `ADMINISTRATIVE_RESULT_CHANGE` — 行政性改判，维持原竞技结算。
-- 推介文件（pick）合并后不得修改——推介是不可变的报价记录；写错了就用一个
-  新推介声明作废并说明，旧记录保留。
+- Results are append-only: a correction is a new file `results/<year>/<id>.rN.json` (N increments), whose `corrects` field holds the **exact SHA-256 of the corrected file**; broken chains, forks and no-op corrections are rejected by script.
+- A correction must carry a non-empty reason (`note`) and a `correction_kind` matching one of four semantics (inherited from Settlement Rules v1). Except for `SETTLEMENT_LOGIC_ERROR`, at least one `evidence_refs` source is required:
+  1. `SOURCE_DATA_ERROR` — the score source was mis-transcribed (needs the score from a more authoritative source, with evidence);
+  2. `SETTLEMENT_LOGIC_ERROR` — engine or rule application error (needs recomputation with the correct score);
+  3. `OFFICIAL_RESULT_CORRECTION` — the official score was revised (evidence hierarchy: competition governing body > official data provider > club official; ordinary score websites are not authoritative);
+  4. `ADMINISTRATIVE_RESULT_CHANGE` — administrative reclassification; the original sporting settlement stands.
+- Pick files are immutable once merged — a pick is an immutable quotation record. If one is wrong, publish a new pick declaring the void and keep the old record.
 
-## 5. 结算规则版本
+## 5. Settlement rules version
 
-- 结算语义冻结自 Settlement Rules v1（52 用例黄金数据集，
-  `fixtures/golden/settlement-v1.json`，原 Owner 评审基线，SHA-256 见 DESIGN.md）。
-- 黄金数据集是 CI 强制回归：任何使 52 用例之一变化的代码改动都会被拒绝。
-  修改结算规则 = 换新版本号 + 新黄金数据集 + 显式 PR 声明，历史记录不回溯重算
-  （投影按结算时点的规则版本冻结）。
+- Settlement semantics are frozen as Settlement Rules v1 (52-case golden dataset, `fixtures/golden/settlement-v1.json`; SHA-256 baseline prefix in [DESIGN.md](DESIGN.md)).
+- The golden dataset is a CI-enforced regression: any code change that alters one of the 52 cases is rejected.
+- Changing the settlement rules means a new version number, a new golden dataset and an explicit PR declaration; history is never recalculated retroactively (projections freeze to the rules version in force at settlement time).
 
-## 6. 派生文件纪律
+## 6. Derived-file discipline
 
-`settlements/` 与 `standings/` 是派生文件：必须与原始数据保持一致
-（`settle.mjs` 会先清空旧结算再完整重建，CI 随后执行 `git diff --exit-code`），记录结果的 PR 必须把派生变更一并提交，
-让评审人在 diff 里直接看到程序算出的结论。怀疑数字有问题？删掉重跑即可。
+`settlements/` and `standings/` are derived files: they must stay consistent with the raw data (`settle.mjs` clears and fully rebuilds settlements, and CI then runs `git diff --exit-code`). A PR recording results must include the derived changes so reviewers see the computed outcome directly in the diff. Suspect a number? Delete the derived files and rebuild.
