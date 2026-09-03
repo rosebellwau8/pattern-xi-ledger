@@ -14,6 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 
 import { buildSite, newsletterSlot } from "../scripts/build-site.mjs";
+import { recordPublicReceipt } from "../scripts/publication.mjs";
 
 function makeLedger() {
   const root = mkdtempSync(join(tmpdir(), "pattern-xi-site-test-"));
@@ -46,6 +47,10 @@ function fixtureUpcoming(root) {
     normalized_decimal_price: "1.97",
     price_source: "Crown",
   });
+  recordPublicReceipt(root, `picks/2026/${id}.json`, {
+    url: "https://x.com/patternxi/status/1964280000000000002",
+    publishedAt: "2026-09-06T14:30:00Z",
+  });
   return id;
 }
 
@@ -72,6 +77,10 @@ function fixtureWin(root) {
     status: "PLAYED",
     home_score: 2,
     away_score: 0,
+  });
+  recordPublicReceipt(root, `picks/2026/${id}.json`, {
+    url: "https://x.com/patternxi/status/1964280000000000000",
+    publishedAt: "2026-09-01T16:00:00Z",
   });
   return id;
 }
@@ -100,6 +109,27 @@ function fixtureLoss(root) {
     home_score: 1,
     away_score: 0,
   });
+  recordPublicReceipt(root, `picks/2026/${id}.json`, {
+    url: "https://x.com/patternxi/status/1964280000000000003",
+    publishedAt: "2026-08-30T13:00:00Z",
+  });
+  return id;
+}
+
+function fixtureCommitment(root) {
+  const id = "pxb-20260903-1600";
+  writeJson(root, `publication/commitments/2026/${id}.json`, {
+    schema: "pattern-xi.batch-commitment.v1",
+    batch_id: id,
+    pick_count: 10,
+    earliest_kickoff_utc: "2026-09-06T16:30:00Z",
+    batch_sha256: "ab".repeat(32),
+    receipt: {
+      channel: "X",
+      url: "https://x.com/patternxi/status/1964280000000000001",
+      published_at: "2026-09-06T14:30:00Z",
+    },
+  });
   return id;
 }
 
@@ -126,6 +156,7 @@ test("homepage binds the dark dashboard design to ledger data", () => {
     const upcomingId = fixtureUpcoming(root);
     const winId = fixtureWin(root);
     fixtureLoss(root);
+    const batchId = fixtureCommitment(root);
     buildSite(root);
     const html = readFileSync(join(root, "site-dist/index.html"), "utf8");
 
@@ -149,15 +180,21 @@ test("homepage binds the dark dashboard design to ledger data", () => {
     assert.match(html, /Official Picks<br>Current ledger/u);
     assert.match(html, /<strong>0<\/strong><span>Official Picks<br>Current ledger<\/span>/u);
     assert.match(html, /<strong>2<\/strong><span>Settled Picks<br>Voids excluded<\/span>/u);
-    assert.match(html, /Publication Gate<br>GitHub witness/u);
+    assert.match(html, /Publication Gate<br>Public X receipt/u);
     assert.match(html, /Golden Cases<br>Settlement v1/u);
 
     // Two settled picks mean the equity curve is rendered for real.
     assert.match(html, /<polyline class="line" points=/u);
     assert.doesNotMatch(html, /The equity curve begins once two picks have settled/u);
     assert.match(html, /Proof of Publication/u);
-    assert.match(html, /Full-state manifest/u);
-    assert.match(html, /OpenTimestamps anchors the complete state independently\./u);
+    assert.match(html, /Subscriber batches/u);
+    assert.match(html, /salted exact-byte commitment/u);
+    assert.match(html, /Subscriber batch commitments/u);
+    assert.match(html, new RegExp(batchId, "u"));
+    assert.match(html, /abababababababab…/u);
+    assert.match(html, /Committed/u);
+    assert.match(html, /href="ledger\.json"/u);
+    assert.ok(existsSync(join(root, "site-dist/ledger.json")));
     assert.ok(html.indexOf("The line. The price.") < html.indexOf("Today’s / Upcoming Picks"));
     assert.ok(html.indexOf("Today’s / Upcoming Picks") < html.indexOf("Proof of Publication"));
     // The settled win never appears in the upcoming list.
@@ -211,6 +248,10 @@ test("pick detail pages expose the frozen pick, verdict and correction chain", (
   try {
     const upcomingId = fixtureUpcoming(root);
     const winId = fixtureWin(root);
+    recordPublicReceipt(root, `picks/2026/${winId}.json`, {
+      url: "https://x.com/patternxi/status/1964280000000000000",
+      publishedAt: "2026-09-01T16:00:00Z",
+    });
     buildSite(root);
 
     const win = readFileSync(join(root, `site-dist/picks/${winId}.html`), "utf8");
@@ -220,6 +261,13 @@ test("pick detail pages expose the frozen pick, verdict and correction chain", (
     assert.match(win, /Eastside Rovers v Westham Athletic/u);
     assert.match(win, /Pick ID<\/dt><dd><code>/u);
     assert.match(win, /Price source<\/dt><dd>Pinnacle pre-match<\/dd>/u);
+    assert.match(win, /Publication receipt/u);
+    assert.match(win, /Open X status/u);
+    assert.match(win, /Receipt binding/u);
+    const ledgerExport = JSON.parse(readFileSync(join(root, "site-dist/ledger.json"), "utf8"));
+    const exportedWin = ledgerExport.picks.find((item) => item.id === winId);
+    assert.equal(exportedWin.publication_evidence.type, "PUBLIC_RECEIPT");
+    assert.match(exportedWin.publication_evidence.url, /^https:\/\/x\.com\//u);
     assert.match(win, /<td>r1<\/td>/u);
     assert.match(win, /How the handicap splits/u);
     assert.match(win, /−1\.00/u);
@@ -236,22 +284,46 @@ test("pick detail pages expose the frozen pick, verdict and correction chain", (
   }
 });
 
-test("verification page separates the PR witness from the independent Bitcoin anchor", () => {
+test("verification page explains public receipts and salted batch commitments honestly", () => {
   const root = makeLedger();
   try {
     fixtureUpcoming(root);
     buildSite(root);
     const html = readFileSync(join(root, "site-dist/verification.html"), "utf8");
 
-    assert.match(html, /Three-layer evidence model/u);
-    assert.match(html, /Public publication witness/u);
-    assert.match(html, /startedAt/u);
-    assert.match(html, /exact head SHA/u);
-    assert.match(html, /Independent cryptographic timestamp/u);
-    assert.match(html, /not cryptographically immutable/u);
+    assert.match(html, /Lean trust model/u);
+    assert.match(html, /Public publication receipt/u);
+    assert.match(html, /Salted batch commitment/u);
+    assert.match(html, /X posts can be deleted/u);
+    assert.doesNotMatch(html, /startedAt|OpenTimestamps|Bitcoin anchor/u);
+    assert.match(html, /not an immutable timestamp/u);
     assert.match(html, /<section id="methodology"/u);
     assert.match(html, /href="verification\.html#methodology"/u);
     assert.doesNotMatch(html, /nothing has been altered since|Every pick is listed once/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("site build fails closed when a pick has no publication evidence", () => {
+  const root = makeLedger();
+  try {
+    const id = "2026-09-06-fixture-1a2b3c4d-ah";
+    writeJson(root, `picks/2026/${id}.json`, {
+      schema: "pattern-xi.pick.v1",
+      id,
+      match: "North United v South City",
+      competition: "Premier Division",
+      kickoff_utc: "2026-09-06T16:30:00Z",
+      market: "asian_handicap",
+      selection: "AWAY",
+      line: "-0.75",
+      published_price: "0.97",
+      published_price_format: "HONG_KONG_ODDS",
+      normalized_decimal_price: "1.97",
+      price_source: "Crown",
+    });
+    assert.throws(() => buildSite(root), /has no publication evidence/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
