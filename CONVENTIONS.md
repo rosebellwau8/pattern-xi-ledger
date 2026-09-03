@@ -1,56 +1,134 @@
-# Ledger Rules (CONVENTIONS)
+# Ledger Rules
 
-This file is the ledger's rulebook. Once published, any change to these rules goes through a PR and is visible in Git history.
-A rule violation means CI refuses to merge (fail-closed); there are no warning-level violations.
+These are the formal operating rules for the current Pattern XI ledger. Rule changes are public repository changes; they never retroactively change old settlements.
 
-## 1. Publication rules
+## 1. Formal admission
 
-- **Publication time** is defined as the GitHub server-side `startedAt` of the job attempt in which the exact version of a pick first passed `Ledger integrity` in a public PR. That job must run against the PR's exact head SHA and file contents, and the time must be at least 2 hours before `kickoff_utc`.
-- If a pick in a PR is modified, its SHA changes and the check must run and pass again. The version finally merged must be identical to the version that passed the two-hour check; merging only admits an already-public, already-validated record into the formal ledger and the static site — it does not define first publication.
-- Git author/committer timestamps are ordinary metadata — locally settable and changeable via amend or rebase — and are never used as publication time or pre-kickoff proof. The first-layer time witness comes only from a public PR and the GitHub-hosted Actions server-side event record for the exact SHA.
-- Merged `picks/**/*.json` and `results/**/*.json` must never be modified, deleted or renamed; CI enforces the append-only constraint on PR diffs. A wrong result can only be corrected by adding a `.rN.json` correction file.
-- **Full-disclosure obligation**: every pick actually tipped or staked must be recorded; selective publication is not allowed. This is the precondition for the ledger's credibility — and the one rule that code cannot enforce, only rules and reputation can.
-- The unit stake is fixed at 1; rolling stakes, accumulators and bankroll management are not recorded.
-- Market scope: full-match Asian handicap only (`market: "asian_handicap"`), HOME/AWAY selections only.
+- Market scope is full-match Asian handicap only. Selection is `HOME` or `AWAY`; stake is one unit.
+- Every formal pick must have exactly one publication-evidence route:
+  - `PUBLIC_RECEIPT`: the complete pick was posted publicly on X; or
+  - `SUBSCRIBER_BATCH`: the later-disclosed pick was included in a salted batch committed publicly on X.
+- The X publication time recorded in that evidence must be at least two hours before kickoff. `kickoff - published_at >= 2h`; equality passes.
+- A failed, missing, deleted or late social post must not be silently backdated. If the external receipt cannot be publicly checked, the claimed evidence is weakened and should be disclosed rather than replaced.
+- X is a third-party public receipt, not an immutable or cryptographic timestamp. CI validates the stored URL, UTC value, cutoff and hashes; an auditor compares the stored metadata with the linked X page.
+- Git author and committer dates are never publication evidence.
+- **Full-disclosure obligation:** every pick actually tipped or staked must enter the record. Code cannot prove completeness; the public batch counts, delivery process and reputation make omissions discoverable.
 
-GitHub history, branch protection and append-only validation sharply raise the cost and visibility of after-the-fact changes; the repository owner still theoretically controls the repository configuration, so these mechanisms are not described as cryptographically absolutely tamper-proof. The independent cryptographic record is provided by the complete ledger-state manifests and OpenTimestamps receipts on the public `anchors` branch.
+## 2. Public pick records
 
-## 2. Pick file rules
+The canonical pick path is:
 
-- The file name is tightly bound to its content: `picks/<year>/<kickoff-UTC-date>-<team-slugs>-ah.json`, and `id` must start with the kickoff UTC date.
-- Two price fields are mandatory: `published_price` (as published) and `published_price_format` (`DECIMAL_ODDS` or `HONG_KONG_ODDS`); `normalized_decimal_price` is verified by script (Hong Kong odds + 1 = decimal), eliminating format drift.
-- `price_source` is mandatory (e.g. "Pinnacle pre-match"). This is an operator-declared field — the ledger proves what was published and when; it does not independently verify the odds page or third-party prices.
-- Unknown fields are rejected outright (allowlist); there is no room for "just one extra field".
+```text
+picks/<kickoff-year>/<pick-id>.json
+```
 
-## 3. Result recording rules (facts only, never conclusions)
+The ID starts with the kickoff UTC date and the filename must match the ID. Unknown fields fail closed. The schema requires:
 
-Result files may contain **fact fields only**: scores, statuses, timestamps, interruption dispositions. Classifications (win / half-win / push / half-loss / loss / void) and net returns are computed by `settle.mjs` calling the frozen settlement engine; a hand-written conclusion would be ignored — the field simply does not exist.
+- competition and match;
+- frozen UTC kickoff;
+- Asian handicap market and HOME/AWAY selection;
+- whole, half or quarter line;
+- published price and price format;
+- normalized decimal price greater than one;
+- operator-declared price source.
 
-Status mapping (per Settlement Rules v1):
+A public receipt lives at:
 
-| status | Required fields | Engine behaviour |
-|---|---|---|
-| `PLAYED` | `home_score`, `away_score` | Settles normally; VOID if `actual_kickoff_at` is more than 48h after the frozen kickoff |
-| `POSTPONED` | New kickoff: `actual_kickoff_at`; on completion also `final_status: "FINISHED"` and the score; no new kickoff: `status_determined_at` | VOID beyond 48h, otherwise PENDING; normal settlement if completed within 48h |
-| `CANCELLED` | — | VOID immediately |
-| `ABANDONED` | `actual_kickoff_at`, `interruption_disposition`; `RESUMED_SAME_FIXTURE` also needs `regulation_completed_at` and the score; `UNKNOWN` needs `status_determined_at` | Settles if the same fixture completes within 48h; replayed or abandoned fixtures are VOID; UNKNOWN is VOID beyond 168h |
+```text
+publication/receipts/<year>/<pick-id>.json
+```
 
-## 4. Correction rules (append-only, never overwrite)
+It must use a canonical `https://x.com/<account>/status/<numeric-id>` URL and its `pick_sha256` must equal the SHA-256 of the pick file's exact bytes.
 
-- Results are append-only: a correction is a new file `results/<year>/<id>.rN.json` (N increments), whose `corrects` field holds the **exact SHA-256 of the corrected file**; broken chains, forks and no-op corrections are rejected by script.
-- A correction must carry a non-empty reason (`note`) and a `correction_kind` matching one of four semantics (inherited from Settlement Rules v1). Except for `SETTLEMENT_LOGIC_ERROR`, at least one `evidence_refs` source is required:
-  1. `SOURCE_DATA_ERROR` — the score source was mis-transcribed (needs the score from a more authoritative source, with evidence);
-  2. `SETTLEMENT_LOGIC_ERROR` — engine or rule application error (needs recomputation with the correct score);
-  3. `OFFICIAL_RESULT_CORRECTION` — the official score was revised (evidence hierarchy: competition governing body > official data provider > club official; ordinary score websites are not authoritative);
-  4. `ADMINISTRATIVE_RESULT_CHANGE` — administrative reclassification; the original sporting settlement stands.
-- Pick files are immutable once merged — a pick is an immutable quotation record. If one is wrong, publish a new pick declaring the void and keep the old record.
+## 3. Subscriber batches
 
-## 5. Settlement rules version
+Batch IDs use:
 
-- Settlement semantics are frozen as Settlement Rules v1 (52-case golden dataset, `fixtures/golden/settlement-v1.json`; SHA-256 baseline prefix in [DESIGN.md](DESIGN.md)).
-- The golden dataset is a CI-enforced regression: any code change that alters one of the 52 cases is rejected.
-- Changing the settlement rules means a new version number, a new golden dataset and an explicit PR declaration; history is never recalculated retroactively (projections freeze to the rules version in force at settlement time).
+```text
+pxb-YYYYMMDD-HHMM[-suffix]
+```
 
-## 6. Derived-file discipline
+The private batch file uses `pattern-xi.subscriber-batch.v1`, contains a random 256-bit nonce and stores full canonical pick objects sorted by ID. The exact file is the commitment preimage.
 
-`settlements/` and `standings/` are derived files: they must stay consistent with the raw data (`settle.mjs` clears and fully rebuilds settlements, and CI then runs `git diff --exit-code`). A PR recording results must include the derived changes so reviewers see the computed outcome directly in the diff. Suspect a number? Delete the derived files and rebuild.
+The public commitment lives at:
+
+```text
+publication/commitments/<year>/<batch-id>.json
+```
+
+It records:
+
+- batch ID;
+- positive pick count;
+- earliest frozen kickoff;
+- exact-byte SHA-256;
+- X URL and platform publication time.
+
+The receipt must precede the earliest kickoff by at least two hours. A commitment may exist without a reveal. It does not admit undisclosed picks into standings.
+
+At disclosure, the original exact bytes are copied to:
+
+```text
+publication/reveals/<year>/<batch-id>.json
+```
+
+Validation rejects a wrong hash, weak nonce, count mismatch, earliest-kickoff mismatch, unsorted or duplicate picks, unknown fields, a pick that differs from its canonical ledger file, or competing evidence.
+
+## 4. Append-only history
+
+Normal pull requests may add, but may not modify, delete or rename:
+
+```text
+picks/**/*.json
+results/**/*.json
+publication/receipts/**/*.json
+publication/commitments/**/*.json
+publication/reveals/**/*.json
+```
+
+Pick records are quotations of what was tipped and are not corrected in place. Result mistakes use an append-only revision.
+
+## 5. Result corrections
+
+The first result is `results/<year>/<pick-id>.json`. Corrections are `<pick-id>.rN.json`, with consecutive revision numbers.
+
+`corrects` is the SHA-256 of the corrected file's exact bytes. Chains must be linear and unforked. A correction needs a non-empty reason and one of:
+
+1. `SOURCE_DATA_ERROR` — transcription/source error; evidence required.
+2. `SETTLEMENT_LOGIC_ERROR` — engine/rule application error.
+3. `OFFICIAL_RESULT_CORRECTION` — authoritative score revision; evidence required.
+4. `ADMINISTRATIVE_RESULT_CHANGE` — later administrative reclassification; evidence required.
+
+Except for `SETTLEMENT_LOGIC_ERROR`, `evidence_refs` must contain at least one source. A non-logic correction must change result facts.
+
+## 6. Settlement Rules v1
+
+Result files contain facts only. Humans do not type classifications or returns. The frozen engine determines:
+
+```text
+WIN
+HALF_WIN
+PUSH
+HALF_LOSS
+LOSS
+VOID
+```
+
+It uses exact decimal arithmetic, three-decimal ROUND_HALF_UP output, frozen kickoff/lifecycle rules and the 52-case golden dataset. A rules change requires a new version and must not retroactively rewrite historical output.
+
+## 7. Derived-file discipline
+
+`settlements/`, `standings/` and `site-dist/` are projections. Rebuilding from the authoritative inputs must be deterministic.
+
+```bash
+npm run validate
+npm run settle
+npm run standings
+npm run build
+```
+
+CI rejects stale committed settlements or standings. The static site publishes a deterministic `ledger.json` export; neither the site nor that export is an input to settlement.
+
+## 8. Operational files and secrets
+
+Private subscriber batch files, batch source files and receipt-input handoff files must remain outside the tracked repository. The provided default filenames are ignored by Git. X, Telegram, newsletter, payment and membership credentials must never be placed in public JSON, generated HTML or repository history.

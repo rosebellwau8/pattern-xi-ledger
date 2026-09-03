@@ -1,3 +1,6 @@
 site-dist/
 node_modules/
 .zcode/
+publication-receipts-input*.json
+private-batch*.json
+subscriber-source*.json

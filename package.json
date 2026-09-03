@@ -6,7 +6,7 @@
   "engines": {
     "node": ">=24"
   },
-  "description": "Public prospective football pick ledger with exact-commit CI witnesses and Bitcoin-anchored state snapshots.",
+  "description": "Public prospective football pick ledger with X publication receipts and salted batch commitments.",
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\" \"tests/*.test.ts\"",
     "typecheck": "tsc --project tsconfig.json",
@@ -14,9 +14,9 @@
     "validate:pr": "node scripts/validate-pr.mjs",
     "import": "node scripts/import-production.mjs",
     "publish": "node scripts/publish-production.mjs",
+    "publication": "node scripts/publication.mjs",
     "settle": "node scripts/settle.mjs",
     "standings": "node scripts/standings.mjs",
-    "manifest": "node scripts/manifest.mjs",
     "build": "node scripts/build-site.mjs"
   },
   "devDependencies": {

@@ -30,6 +30,7 @@ jobs:
 
       - name: Rebuild projections and site from authoritative data
         run: |
+          node scripts/validate.mjs
           node scripts/settle.mjs
           node scripts/standings.mjs
           node scripts/build-site.mjs
