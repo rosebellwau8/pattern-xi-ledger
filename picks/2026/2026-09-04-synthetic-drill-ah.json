@@ -1,0 +1,15 @@
+{
+  "schema": "pattern-xi.pick.v1",
+  "id": "2026-09-04-synthetic-drill-ah",
+  "match": "Synthetic Drill XI vs Rehearsal United",
+  "competition": "SYNTHETIC-END-TO-END-DRILL",
+  "kickoff_utc": "2026-09-04T16:00:00Z",
+  "market": "asian_handicap",
+  "selection": "HOME",
+  "line": "-0.50",
+  "published_price": "1.95",
+  "published_price_format": "DECIMAL_ODDS",
+  "normalized_decimal_price": "1.95",
+  "price_source": "synthetic rehearsal fixture (no real market data)",
+  "note": "Synthetic pick for the 2026-09-04 freeze-acceptance end-to-end rehearsal. Not a real recommendation; a CANCELLED result will be appended after kickoff so it settles VOID and never affects returns. Recorded during the shadow-run window, outside the formal 90-day record."
+}
