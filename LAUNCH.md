@@ -80,3 +80,21 @@ Freeze-acceptance evidence (all publicly checkable GitHub measurements):
 | Local verification | 33 tests, typecheck, `validate`, deterministic derived rebuild (no-op) and deterministic site build all passed; the overclaim sweep found no leftovers |
 | Branch protection re-check | Measured via the GitHub API: required check `Ledger integrity` (strict), administrators included, no force pushes, no deletions, PR + 0 approvals — matching the finalised table above |
 | Site deployment | Pages deployed `bd63909` successfully; <https://rosebellwau8.github.io/pattern-xi-ledger/> measured serving the English three-layer-model content over enforced HTTPS |
+
+## Restore and re-freeze record (2026-09-04, UTC)
+
+On 2026-09-03, PR #9 (`feat: adopt lightweight publication evidence`) replaced the frozen three-layer evidence model with an X-receipt publication-evidence subsystem and removed the daily manifest/OpenTimestamps anchoring. On 2026-09-04 the operator re-affirmed the frozen three-layer conclusions; PR #9 was reverted in full by [PR #10](https://github.com/rosebellwau8/pattern-xi-ledger/pull/10) (merge `a7466b8`), and the resulting tree is byte-identical to the frozen pre-#9 state (`git diff 6cf3e6d` empty). The architecture remains frozen exactly as defined on 2026-09-02.
+
+Freeze re-acceptance evidence (all publicly checkable GitHub measurements):
+
+| Item | Evidence |
+|---|---|
+| Restore merged | [PR #10](https://github.com/rosebellwau8/pattern-xi-ledger/pull/10) (merge `a7466b8`); [Check run 33868866523](https://github.com/rosebellwau8/pattern-xi-ledger/actions/runs/33868866523): public repository, `Ledger integrity` job `startedAt` = `2026-09-04T11:38:03Z` on head `8375d6f0` |
+| End-to-end drill | [PR #11](https://github.com/rosebellwau8/pattern-xi-ledger/pull/11) synthetic pick `2026-09-04-synthetic-drill-ah` (kickoff `2026-09-04T16:00:00Z`): [Check run 33869018675](https://github.com/rosebellwau8/pattern-xi-ledger/actions/runs/33869018675) passed on head `77f8519` with job `startedAt` = `2026-09-04T11:40:03Z` — 4 h 19 m before kickoff; merged as `c1ffa35` at `11:45:36Z`; Check and Deploy site green on `main` |
+| Complete-state anchoring | [Anchor manifest run 33869545150](https://github.com/rosebellwau8/pattern-xi-ledger/actions/runs/33869545150) (manual dispatch): `manifests/2026-09-04.txt` on the `anchors` branch records `main_commit_sha c1ffa35`, `previous_manifest_sha256 2f247e32…5196` (verified locally equal to the SHA-256 of `manifests/2026-09-03.txt`), `pick_count 1`, pick hash `8afb5dcf…3ede` (verified equal to the merged pick bytes); the `.ots` receipt was submitted and Bitcoin confirmation is asynchronous by OpenTimestamps design, completed by later `ots upgrade` runs |
+| Missed-schedule compensation | The 2026-09-04 00:15 UTC scheduled anchor run did not fire because PR #9 had removed `stamp.yml`; the manual dispatch above still produced a complete ledger-state manifest covering all history, exactly the designed compensation path, and the restored daily schedule resumes from 2026-09-05 |
+| Full local + CI verification | 37 tests, typecheck, `validate`, deterministic settle/standings rebuild and deterministic site build all passed locally and in every Check run above |
+| Branch protection re-check | Measured via the GitHub API on 2026-09-04: required check `Ledger integrity` (strict), administrators included, no force pushes, no deletions, PR + 0 approvals — unchanged from the finalised table above, and both PRs #10/#11 were actually gated by it |
+| Site deployment | Pages deployed `c1ffa35`; the homepage and `verification.html` were measured serving the three-layer evidence model content (public PR + exact-SHA Actions witness; full-state Bitcoin-anchored manifests; append-only corrections) |
+
+Drill-pick disposition: `2026-09-04-synthetic-drill-ah` is an explicitly synthetic rehearsal fixture inside the shadow-run window; after its kickoff a `CANCELLED` result is appended so it settles `VOID` and never affects returns. It remains in the append-only ledger as the permanent end-to-end rehearsal record.
