@@ -2,9 +2,9 @@
   "schema": "pattern-xi.standings.v1",
   "unit_stake": "1",
   "rules": "settlement-rules.v1",
-  "pick_count": 0,
+  "pick_count": 1,
   "settled_count": 0,
-  "pending_count": 0,
+  "pending_count": 1,
   "void_count": 0,
   "n": 0,
   "classification_counts": {
