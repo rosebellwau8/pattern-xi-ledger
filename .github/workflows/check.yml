@@ -7,6 +7,7 @@ on:
       - main
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -37,9 +38,28 @@ jobs:
       - name: Validate all picks, results, and correction chains
         run: node scripts/validate.mjs
 
-      - name: Enforce append-only inputs, publication evidence, and post-kickoff results
+      - name: Resolve public GitHub publication witness
         if: github.event_name == 'pull_request'
-        run: node scripts/validate-pr.mjs "origin/${{ github.base_ref }}" HEAD
+        id: publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)" = "public"
+          run_head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq .head_sha)"
+          test "$run_head_sha" = "$EXPECTED_HEAD_SHA"
+          witness_time="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs" \
+            --jq '.jobs[] | select(.name == "Ledger integrity") | .started_at')"
+          test -n "$witness_time"
+          echo "witness_time=$witness_time" >> "$GITHUB_OUTPUT"
+          echo "Public PR witness: head=$EXPECTED_HEAD_SHA job_started_at=$witness_time"
+
+      - name: Enforce append-only inputs, two-hour picks, and post-kickoff results
+        if: github.event_name == 'pull_request'
+        run: >-
+          node scripts/validate-pr.mjs "origin/${{ github.base_ref }}" HEAD
+          --witness-time "${{ steps.publication.outputs.witness_time }}"
+          --expected-head-sha "${{ github.event.pull_request.head.sha }}"
 
       - name: Rebuild derived settlements and standings
         run: |

@@ -15,11 +15,10 @@
 //     whole current ledger, however the formal window is set.
 // All copy is English (en-GB): the site faces a UK audience.
 
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { isMainScript, REPO_ROOT, sha256File } from "./lib.mjs";
-import { loadPublicationEvidence } from "./publication-evidence.mjs";
 import { buildSettlements } from "./settle.mjs";
 import { buildStandings } from "./standings.mjs";
 import { buildPerformanceProjection } from "../src/performance/performance-projection.ts";
@@ -294,7 +293,6 @@ const STYLE = `
   .btn.primary:hover { color: #061109; filter: brightness(1.05); }
 
   .panel {
-    min-width: 0;
     border: 1px solid var(--line);
     border-radius: 11px;
     background: linear-gradient(180deg, rgba(25,32,27,.96), rgba(20,26,22,.96));
@@ -378,7 +376,7 @@ const STYLE = `
   .picks-panel, .curve-panel { min-height: 266px; }
   .picks-panel { padding: 14px 16px 12px; }
   .curve-panel { padding: 14px 16px 12px; }
-  .table-wrap { width: 100%; max-width: 100%; overflow-x: auto; }
+  .table-wrap { overflow-x: auto; }
   table { width:100%; border-collapse:collapse; font-size:.78rem; }
   th {
     padding: 8px 8px;
@@ -1063,7 +1061,7 @@ ${body}
 `;
 }
 
-function buildIndexPage(orderedPicks, settlements, standings, evidence) {
+function buildIndexPage(orderedPicks, settlements, standings) {
   const official = officialProjection(orderedPicks, settlements);
   const upcoming = orderedPicks
     .filter((pick) => settlements.get(pick.id)?.current.record_state !== "SETTLED")
@@ -1095,24 +1093,15 @@ function buildIndexPage(orderedPicks, settlements, standings, evidence) {
     officialSparks.push(running);
   }
   const netSpark = standings.cumulative_return_curve.map((point) => Number.parseFloat(point.cumulative_net_return));
-  const commitments = [...evidence.commitments.values()]
-    .sort((left, right) => right.batchId.localeCompare(left.batchId));
-  const commitmentRows = commitments.map((commitment) => `          <tr>
-            <td><code>${esc(commitment.batchId)}</code></td>
-            <td class="num">${commitment.data.pick_count}</td>
-            <td class="num">${esc(commitment.data.earliest_kickoff_utc.replace("T", " ").replace("Z", " UTC"))}</td>
-            <td><a href="${esc(commitment.data.receipt.url)}"><code>${esc(commitment.data.batch_sha256.slice(0, 16))}…</code></a></td>
-            <td>${commitment.status === "REVEALED" ? "Revealed" : "Committed"}</td>
-          </tr>`).join("\n");
 
   return page("Overview",
-    "Pattern XI is a public football picks ledger with public X publication receipts, salted subscriber-batch commitments and deterministic settlement.",
+    "Pattern XI is a public football picks ledger with an exact-commit publication witness, complete-state Bitcoin timestamps and append-only correction provenance.",
     `
 <section class="hero-grid" aria-labelledby="headline">
   <div class="hero-copy">
-    <p class="eyebrow">Transparent Asian handicap record</p>
+    <p class="eyebrow">Independent Asian handicap ledger</p>
     <h1 id="headline">The line. The price.<br>The public record.</h1>
-    <p class="standfirst">Public selections appear in full before kickoff; subscriber batches commit before kickoff and reveal afterwards. No previews, no hidden model notes — just the final side, handicap and published price.</p>
+    <p class="standfirst">Every selection appears in public before kickoff, then stays on the record. No previews, no hidden model notes — just the final side, handicap and published price.</p>
     <div class="cta-row">
       <a class="btn primary" href="#upcoming">See today’s picks →</a>
       <a class="btn" href="track-record.html">Read the full record</a>
@@ -1144,7 +1133,7 @@ function buildIndexPage(orderedPicks, settlements, standings, evidence) {
 <section class="kpi-strip" aria-label="At a glance">
   ${kpiCard("⌁", official.pick_count, "Official Picks<br>Current ledger", sparkPoints(officialSparks))}
   ${kpiCard("◎", standings.n, "Settled Picks<br>Voids excluded", sparkPoints(netSpark))}
-  ${kpiCard("⏱", "≥2h", "Publication Gate<br>Public X receipt", "2,29 18,29 34,29 50,22 66,22 82,22 98,15")}
+  ${kpiCard("⏱", "≥2h", "Publication Gate<br>GitHub witness", "2,29 18,29 34,29 50,22 66,22 82,22 98,15")}
   ${kpiCard("◇", "52", "Golden Cases<br>Settlement v1", "2,29 18,26 34,28 50,21 66,22 82,17 98,18")}
 </section>
 
@@ -1170,7 +1159,7 @@ function buildIndexPage(orderedPicks, settlements, standings, evidence) {
         <tbody>
 ${upcoming.length === 0
     ? `          <tr class="empty-row">
-            <td colspan="7">No picks yet. A public pick needs a verifiable X receipt at least two hours before kickoff before it can enter the formal ledger.</td>
+            <td colspan="7">No picks yet. A pick becomes public in an exact PR commit and must pass its GitHub-hosted two-hour check before it can enter the formal ledger.</td>
           </tr>`
     : rows}
         </tbody>
@@ -1182,20 +1171,6 @@ ${upcoming.length === 0
   ${curvePanel(standings.cumulative_return_curve, "curveFill", 430, 174)}
 </section>
 
-<section class="panel section-panel section-gap" aria-label="Subscriber batch commitments">
-  <div class="section-heading"><div><h2>Subscriber batch commitments</h2><p>Salted exact-byte hashes published before the earliest kickoff</p></div><a href="ledger.json">Download ledger JSON →</a></div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Batch</th><th>Picks</th><th>Earliest kickoff</th><th>Public commitment</th><th>Status</th></tr></thead>
-      <tbody>
-${commitments.length === 0
-    ? `        <tr class="empty-row"><td colspan="5">No subscriber-only batches have been committed.</td></tr>`
-    : commitmentRows}
-      </tbody>
-    </table>
-  </div>
-</section>
-
 <section class="panel integrity" aria-label="Proof of publication">
   <div class="panel-title">
     <h2>Proof of Publication <span class="muted">— how integrity is checked</span></h2>
@@ -1203,24 +1178,24 @@ ${commitments.length === 0
   </div>
   <div class="integrity-steps">
     <div class="integrity-step">
-      <div class="step-icon">X</div>
-      <strong>1. Public X receipt</strong>
-      <p>The complete public pick is posted on X at least two hours before kickoff.</p>
+      <div class="step-icon">PR</div>
+      <strong>1. Public before kickoff</strong>
+      <p>The exact pick version is exposed in a public pull request.</p>
+    </div>
+    <div class="integrity-step">
+      <div class="step-icon">CI</div>
+      <strong>2. GitHub-hosted witness</strong>
+      <p>The same SHA must pass the two-hour rule on GitHub Actions.</p>
     </div>
     <div class="integrity-step">
       <div class="step-icon">#</div>
-      <strong>2. Exact-byte binding</strong>
-      <p>The receipt records the SHA-256 of the canonical pick file.</p>
+      <strong>3. Full-state manifest</strong>
+      <p>Every formal pick in the ledger state is SHA-256 hashed.</p>
     </div>
     <div class="integrity-step">
-      <div class="step-icon">#</div>
-      <strong>3. Subscriber batches</strong>
-      <p>Private batches use a salted exact-byte commitment before kickoff.</p>
-    </div>
-    <div class="integrity-step">
-      <div class="step-icon">+</div>
-      <strong>4. Append-only history</strong>
-      <p>Results, evidence and corrections are appended, never silently replaced.</p>
+      <div class="step-icon">₿</div>
+      <strong>4. Bitcoin timestamp</strong>
+      <p>OpenTimestamps anchors the complete state independently.</p>
     </div>
     <div class="integrity-step">
       <div class="step-icon">↻</div>
@@ -1237,8 +1212,8 @@ ${commitments.length === 0
     <h2>What the ledger proves</h2>
     <p>The system is designed to make retrospective alteration detectable and to let anyone rebuild the published record independently.</p>
     <ul>
-      <li>Publication receipt: a public X status tied to the exact pick bytes.</li>
-      <li>Private picks: a salted batch commitment revealed after the event.</li>
+      <li>Publication witness: public PR + exact-SHA GitHub Actions check.</li>
+      <li>Independent anchor: OpenTimestamps / Bitcoin.</li>
       <li>Corrections are append-only and hash-linked.</li>
       <li>Scores and prices remain operator-entered facts.</li>
     </ul>
@@ -1347,20 +1322,20 @@ ${descending.length === 0
 function buildVerificationPage() {
   const code = (text) => `<pre><code>${esc(text)}</code></pre>`;
   return page("Verify it yourself",
-    "Verify public X receipts, salted subscriber-batch commitments and the deterministic rebuild of the Pattern XI ledger.",
+    "Verify the exact-commit public PR witness, full-state Bitcoin timestamp and deterministic rebuild of the Pattern XI ledger.",
     `
 <section class="page-hero" aria-labelledby="verify-title">
   <div class="page-hero-copy">
     <p class="eyebrow">Verification</p>
     <h1 id="verify-title">Trust, but verify.</h1>
-    <p class="standfirst">This site is static HTML generated from a public ledger. X provides a human-readable third-party publication receipt; the repository preserves exact bytes, corrections and deterministic calculations.</p>
+    <p class="standfirst">This site has no database and no back office. It is static HTML generated from a public Git repository, and its central claims can be checked from your own machine.</p>
     <div class="cta-row"><a class="btn primary" href="#five-minutes">Run the five-minute check →</a><a class="btn" href="${REPO_URL}">Open GitHub repository ↗</a></div>
   </div>
-  <aside class="panel summary-card" aria-label="Lean trust model">
-    <div class="panel-title"><h2>Lean trust model</h2></div>
+  <aside class="panel summary-card" aria-label="Three-layer evidence model">
+    <div class="panel-title"><h2>Three-layer evidence model</h2></div>
     <div class="evidence-stack">
-      <div class="evidence-mini"><div class="n">01</div><div><strong>Public publication receipt</strong><p>The complete public pick appears on X at least two hours before kickoff.</p></div></div>
-      <div class="evidence-mini"><div class="n">02</div><div><strong>Salted batch commitment</strong><p>Subscriber picks commit to exact bytes before kickoff and reveal those bytes afterwards.</p></div></div>
+      <div class="evidence-mini"><div class="n">01</div><div><strong>Public publication witness</strong><p>Public PR + GitHub-hosted check for the exact SHA at least two hours before kickoff.</p></div></div>
+      <div class="evidence-mini"><div class="n">02</div><div><strong>Independent cryptographic timestamp</strong><p>A full ledger-state manifest is hash-linked and anchored through OpenTimestamps / Bitcoin.</p></div></div>
       <div class="evidence-mini"><div class="n">03</div><div><strong>Append-only correction provenance</strong><p>Published inputs are not overwritten; revisions point to the exact prior bytes.</p></div></div>
     </div>
   </aside>
@@ -1368,20 +1343,22 @@ function buildVerificationPage() {
 
 <section id="five-minutes" class="verify-layout">
   <article class="panel verify-steps" aria-label="Five-minute verification">
-    <div class="section-heading"><div><h2>Five minutes, four checks</h2><p>Check the public receipt, exact bytes, batch reveal and deterministic rebuild.</p></div></div>
+    <div class="section-heading"><div><h2>Five minutes, four commands</h2><p>Check the public witness, Bitcoin anchor and deterministic rebuild.</p></div></div>
 
     <div class="verify-step"><div class="step-no">1</div><div><h3>Clone the repository</h3><p>The ledger is the repository. The site is merely a deterministic view of it.</p>${code(`git clone ${REPO_URL}.git\ncd pattern-xi-ledger`)}</div></div>
 
-    <div class="verify-step"><div class="step-no">2</div><div><h3>Open the public receipt</h3><p>Read the pick's receipt JSON, open its X status URL, compare the complete selection and check that the platform time is at least two hours before kickoff.</p>${code(`cat publication/receipts/2026/<pick-id>.json\nsha256sum picks/2026/<pick-id>.json`)}</div></div>
+    <div class="verify-step"><div class="step-no">2</div><div><h3>Verify the public publication witness</h3><p>Find the public PR head commit that introduced the pick. The earliest successful <em>Ledger integrity</em> job for that exact head SHA is the witness; its GitHub server-side <span class="mono">startedAt</span> must be at least two hours before kickoff. A changed pick has a new SHA and must pass again.</p>${code(`git log --all --diff-filter=A --format=%H -- picks/2026/<pick-file>.json\ngh run list --event pull_request --commit <head-sha> --workflow Check --status success --json databaseId,headSha,event,conclusion,url\ngh run view <run-id> --json headSha,jobs`)}</div></div>
 
-    <div class="verify-step"><div class="step-no">3</div><div><h3>Verify a subscriber batch</h3><p>After disclosure, hash the exact reveal file. It must match the SHA-256 posted publicly before the batch's earliest kickoff; its random nonce prevents useful guessing before reveal.</p>${code(`sha256sum publication/reveals/2026/<batch-id>.json\ncat publication/commitments/2026/<batch-id>.json`)}</div></div>
+    <div class="verify-step"><div class="step-no">3</div><div><h3>Inspect a full ledger-state snapshot</h3><p>Every manifest names one exact <span class="mono">main</span> commit, lists the SHA-256 of every formal pick in that complete ledger state, and links to the previous manifest bytes.</p>${code(`git switch anchors\ncat manifests/<date>.txt\ngit show <main-commit-sha>:picks/2026/<pick-file>.json | sha256sum`)}</div></div>
 
-    <div class="verify-step"><div class="step-no">4</div><div><h3>Rebuild the entire record</h3><p>Validate the evidence, then recompute every settlement and the whole track record. If rebuilt output differs from what is committed, the discrepancy is visible.</p>${code(`npm run validate\nnode scripts/settle.mjs && node scripts/standings.mjs && git diff --exit-code`)}</div></div>
+    <div class="verify-step"><div class="step-no">4</div><div><h3>Verify the independent cryptographic timestamp</h3><p>OpenTimestamps proves that the full ledger-state snapshot existed before its Bitcoin time anchor. It is the independent second layer, not the primary two-hour witness for an individual pick.</p>${code(`pip install opentimestamps-client\nots verify manifests/<date>.txt.ots`)}</div></div>
+
+    <div class="verify-step"><div class="step-no">5</div><div><h3>Rebuild the entire record</h3><p>Recompute every settlement and the whole track record from raw picks and results. If rebuilt output differs from what is committed, the discrepancy is visible.</p>${code(`node scripts/settle.mjs && node scripts/standings.mjs && git diff --exit-code`)}</div></div>
   </article>
 
   <aside class="verify-side">
-    <article class="panel truth-card"><h2>What this proves</h2><p><strong>Public picks:</strong> an external X receipt points to the complete recommendation and is bound to the canonical bytes.</p><p><strong>Subscriber picks:</strong> the later reveal matches a salted hash published before kickoff.</p><p><strong>Reproducibility:</strong> settlement and standings can be rebuilt deterministically from committed inputs.</p></article>
-    <article class="panel truth-card"><h2>What it does not prove</h2><ul><li>X posts can be deleted, so a receipt is not an immutable timestamp.</li><li>Receipt times, scores and prices remain operator-entered metadata that auditors compare with the linked public source.</li><li>Repository owners still control GitHub settings; the history is designed to expose ordinary changes, not to claim absolute immutability.</li></ul></article>
+    <article class="panel truth-card"><h2>What this proves</h2><p><strong>Publication:</strong> the exact final pick version was publicly exposed and passed the GitHub-hosted two-hour gate.</p><p><strong>Historical state:</strong> Bitcoin-anchored manifests create an independent cryptographic record of previously published ledger states.</p><p><strong>Reproducibility:</strong> settlement and standings can be rebuilt deterministically from committed inputs.</p></article>
+    <article class="panel truth-card"><h2>What it does not prove</h2><ul><li>Scores and prices remain operator-entered facts and are not independently verified here.</li><li>Repository owners still control GitHub settings; GitHub history itself is not cryptographically immutable.</li><li>The static design greatly reduces the operational attack surface but still depends on GitHub, Actions, Pages and OpenTimestamps.</li></ul></article>
     <article class="panel truth-card"><h2>Settlement integrity</h2><p>Settlement mathematics is frozen under Settlement Rules v1 and guarded by a 52-case owner-reviewed golden dataset. Result facts are inputs; win / half-win / push / half-loss / loss / void and net return are program-derived.</p></article>
   </aside>
 </section>
@@ -1389,7 +1366,7 @@ function buildVerificationPage() {
 <section id="methodology" class="section-gap" aria-label="Methodology">
   <div class="section-heading"><div><h2>Methodology, in one screen</h2><p>The operating boundary is deliberately narrow.</p></div></div>
   <div class="methodology-grid">
-    <article class="panel method-card"><div class="k">01 · PUBLICATION</div><h3>One witnessed version enters the record</h3><p>A public pick needs an X receipt tied to its exact bytes; a subscriber pick needs a pre-kickoff salted commitment.</p></article>
+    <article class="panel method-card"><div class="k">01 · PUBLICATION</div><h3>One exact version enters the record</h3><p>A pick must be public in a PR and pass the exact-SHA GitHub-hosted two-hour check before formal admission.</p></article>
     <article class="panel method-card"><div class="k">02 · SETTLEMENT</div><h3>Facts in, conclusion out</h3><p>Scores and match status are recorded as facts. Classification and unit return are always calculated by frozen code.</p></article>
     <article class="panel method-card"><div class="k">03 · HISTORY</div><h3>Corrections append; history stays visible</h3><p>Published inputs are not silently replaced. A correction references the prior file bytes and creates a linear provenance chain.</p></article>
   </div>
@@ -1397,18 +1374,11 @@ function buildVerificationPage() {
 `, "verification.html");
 }
 
-function buildPickPage(pick, settlement, publicationEvidence) {
+function buildPickPage(pick, settlement) {
   const parts = kickoffParts(pick.kickoffUtc);
   const chain = settlement?.revisions ?? [];
   const current = settlement?.current;
   const priceFormat = pick.data.published_price_format === "HONG_KONG_ODDS" ? "Hong Kong" : "decimal";
-  const evidenceFacts = publicationEvidence?.type === "PUBLIC_RECEIPT"
-    ? `<dt>Publication receipt</dt><dd><a href="${esc(publicationEvidence.receipt.data.url)}">Open X status</a> <small>(${esc(publicationEvidence.receipt.data.published_at)})</small></dd>
-    <dt>Receipt binding</dt><dd><code>${esc(publicationEvidence.receipt.data.pick_sha256)}</code></dd>`
-    : publicationEvidence?.type === "SUBSCRIBER_BATCH"
-      ? `<dt>Publication evidence</dt><dd>Subscriber batch <code>${esc(publicationEvidence.batchId)}</code></dd>
-    <dt>Batch commitment</dt><dd><a href="${esc(publicationEvidence.commitment.data.receipt.url)}"><code>${esc(publicationEvidence.commitment.data.batch_sha256)}</code></a></dd>`
-      : `<dt>Publication evidence</dt><dd>Not available in this fixture</dd>`;
 
   const chainRows = chain.length === 0
     ? `<tr class="empty-row"><td colspan="5">No result recorded yet.</td></tr>`
@@ -1462,7 +1432,7 @@ function buildPickPage(pick, settlement, publicationEvidence) {
 </section>
 
 <section class="panel section-panel section-gap" aria-label="The pick, as published">
-  <div class="section-heading"><div><h2>The pick, as published</h2><p>Bound to a public receipt or a pre-kickoff subscriber commitment</p></div></div>
+  <div class="section-heading"><div><h2>The pick, as published</h2><p>Frozen at the exact PR version that passed the two-hour gate</p></div></div>
   <dl class="facts">
     <dt>Pick ID</dt><dd><code>${esc(pick.id)}</code></dd>
     <dt>Kickoff (UTC)</dt><dd>${esc(pick.kickoffUtc.replace("T", " ").replace("Z", " UTC"))}</dd>
@@ -1470,7 +1440,6 @@ function buildPickPage(pick, settlement, publicationEvidence) {
     <dt>Published price</dt><dd>${esc(pick.data.published_price)} ${esc(priceFormat)} <small>→</small> ${esc(pick.frozen.normalized_decimal_price)} decimal</dd>
     <dt>Price source</dt><dd>${esc(pick.data.price_source)}</dd>
     <dt>Ledger file</dt><dd><code>${esc(pick.path)}</code> <small>(SHA-256 <code>${esc(sha256File(pick.absolutePath).slice(0, 16))}…</code>)</small></dd>
-    ${evidenceFacts}
   </dl>
 </section>
 
@@ -1505,7 +1474,6 @@ ${components}
 export function buildSite(root) {
   const { picks, settlements } = buildSettlements(root);
   const standings = buildStandings(root);
-  const evidence = loadPublicationEvidence(root, picks, { requireEveryPick: true });
   const orderedPicks = [...picks.values()].sort((left, right) =>
     left.kickoffEpoch - right.kickoffEpoch || left.id.localeCompare(right.id));
 
@@ -1513,45 +1481,11 @@ export function buildSite(root) {
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(join(dist, "picks"), { recursive: true });
 
-  writeFileSync(join(dist, "index.html"), buildIndexPage(orderedPicks, settlements, standings, evidence));
+  writeFileSync(join(dist, "index.html"), buildIndexPage(orderedPicks, settlements, standings));
   writeFileSync(join(dist, "track-record.html"), buildTrackRecordPage(orderedPicks, settlements, standings));
   writeFileSync(join(dist, "verification.html"), buildVerificationPage());
-  const exportData = {
-    schema: "pattern-xi.public-ledger-export.v1",
-    picks: orderedPicks.map((pick) => {
-      const proof = evidence.pickEvidence.get(pick.id);
-      return {
-        ...pick.data,
-        publication_evidence: proof?.type === "PUBLIC_RECEIPT"
-          ? { type: proof.type, ...proof.receipt.data }
-          : proof?.type === "SUBSCRIBER_BATCH"
-            ? {
-                type: proof.type,
-                batch_id: proof.batchId,
-                batch_sha256: proof.commitment.data.batch_sha256,
-                receipt: proof.commitment.data.receipt,
-              }
-            : null,
-      };
-    }),
-    settlements: [...settlements.values()],
-    standings,
-    commitments: [...evidence.commitments.values()]
-      .sort((left, right) => left.batchId.localeCompare(right.batchId))
-      .map((commitment) => ({ ...commitment.data, status: commitment.status })),
-  };
-  writeFileSync(join(dist, "ledger.json"), `${JSON.stringify(exportData, null, 2)}\n`);
-  for (const commitment of evidence.commitments.values()) {
-    if (commitment.status !== "REVEALED") continue;
-    const output = join(dist, "batches", `${commitment.batchId}.json`);
-    mkdirSync(dirname(output), { recursive: true });
-    copyFileSync(join(root, commitment.reveal.relativePath), output);
-  }
   for (const pick of orderedPicks) {
-    writeFileSync(
-      join(dist, "picks", `${pick.id}.html`),
-      buildPickPage(pick, settlements.get(pick.id), evidence.pickEvidence.get(pick.id)),
-    );
+    writeFileSync(join(dist, "picks", `${pick.id}.html`), buildPickPage(pick, settlements.get(pick.id)));
   }
 
   console.log(`site built: ${orderedPicks.length} picks, ${standings.n} counted`);
