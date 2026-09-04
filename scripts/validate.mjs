@@ -1,23 +1,15 @@
 #!/usr/bin/env node
-// Validates picks, results, correction chains and lightweight publication
-// evidence. --gate remains a local preflight for selected new pick files; the
-// formal two-hour rule is bound to each X receipt or batch commitment.
+// Validates every pick and result file, correction chains, and — with
+// --gate supports explicit local validation of selected new pick files. The
+// authoritative PR publication witness is enforced by validate-pr.mjs using a
+// GitHub server-side job event time bound to the exact PR head SHA.
 
-import { isMainScript, loadPicks, REPO_ROOT, validateLedger } from "./lib.mjs";
-import { loadPublicationEvidence } from "./publication-evidence.mjs";
+import { join } from "node:path";
 
-export function runValidation(root, {
-  gatePaths = [], resultGatePaths = [], now, requirePublicationEvidence = false,
-} = {}) {
-  const problems = validateLedger(root, { gatePaths, resultGatePaths, now });
-  if (problems.length === 0 && requirePublicationEvidence) {
-    try {
-      loadPublicationEvidence(root, loadPicks(root), { requireEveryPick: true });
-    } catch (error) {
-      problems.push(error.message);
-    }
-  }
-  return problems;
+import { isMainScript, REPO_ROOT, validateLedger } from "./lib.mjs";
+
+export function runValidation(root, { gatePaths = [], resultGatePaths = [], now } = {}) {
+  return validateLedger(root, { gatePaths, resultGatePaths, now });
 }
 
 function main() {
@@ -28,13 +20,13 @@ function main() {
     gatePaths = args.slice(gateIndex + 1).filter((value) => value !== "--");
   }
   const root = process.env.PATTERN_XI_LEDGER_ROOT ?? REPO_ROOT;
-  const problems = runValidation(root, { gatePaths, requirePublicationEvidence: true });
+  const problems = runValidation(root, { gatePaths });
   if (problems.length > 0) {
     for (const problem of problems) console.error(`ERROR: ${problem}`);
     console.error(`validation failed: ${problems.length} problem(s)`);
     process.exit(1);
   }
-  console.log("validation passed: ledger, correction chains, and publication evidence are consistent");
+  console.log("validation passed: picks, results, and correction chains are consistent");
 }
 
 if (isMainScript(import.meta.url)) main();

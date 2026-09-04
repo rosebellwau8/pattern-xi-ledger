@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
 import { buildSite } from "../scripts/build-site.mjs";
-import { recordPublicReceipt } from "../scripts/publication.mjs";
+import { sha256File } from "../scripts/lib.mjs";
+import { writeSnapshotManifest } from "../scripts/manifest.mjs";
 import { main as writeSettlements } from "../scripts/settle.mjs";
 import { main as writeStandings } from "../scripts/standings.mjs";
 import { validatePullRequest } from "../scripts/validate-pr.mjs";
@@ -23,7 +25,7 @@ function writeJson(root, relativePath, value) {
   return file;
 }
 
-test("synthetic X-receipt publication flows through settlement, standings, and site", () => {
+test("synthetic exact-SHA publication flows through snapshot, settlement, standings, and site", () => {
   const root = mkdtempSync(join(tmpdir(), "pattern-xi-evidence-flow-"));
   const pickId = "2026-09-06-north-south-synthetic-ah";
   const pickPath = `picks/2026/${pickId}.json`;
@@ -31,9 +33,7 @@ test("synthetic X-receipt publication flows through settlement, standings, and s
     runGit(root, ["init", "--initial-branch=main"]);
     runGit(root, ["config", "user.name", "Pattern XI rehearsal"]);
     runGit(root, ["config", "user.email", "rehearsal@example.invalid"]);
-    writeFileSync(join(root, ".gitattributes"), "* -text\n");
-    runGit(root, ["add", ".gitattributes"]);
-    runGit(root, ["commit", "-m", "base"]);
+    runGit(root, ["commit", "--allow-empty", "-m", "base"]);
     const baseSha = runGit(root, ["rev-parse", "HEAD"]);
 
     runGit(root, ["switch", "-c", "publish/synthetic"]);
@@ -51,18 +51,26 @@ test("synthetic X-receipt publication flows through settlement, standings, and s
       normalized_decimal_price: "1.95",
       price_source: "Synthetic operator input",
     });
-    const receipt = recordPublicReceipt(root, pickPath, {
-      url: "https://x.com/patternxi/status/1964280000000000000",
-      publishedAt: "2026-09-06T13:00:00Z",
-    });
-    runGit(root, ["add", pickPath, receipt.relativePath]);
+    runGit(root, ["add", pickPath]);
     runGit(root, ["commit", "-m", "publish synthetic pick"]);
     const headSha = runGit(root, ["rev-parse", "HEAD"]);
 
-    assert.deepEqual(validatePullRequest(root, baseSha, headSha), []);
+    assert.deepEqual(validatePullRequest(root, baseSha, headSha, {
+      witnessTime: "2026-09-06T13:00:00Z",
+      expectedHeadSha: headSha,
+    }), []);
 
     runGit(root, ["switch", "main"]);
     runGit(root, ["merge", "--no-ff", "--no-edit", headSha]);
+    const mergedMainSha = runGit(root, ["rev-parse", "HEAD"]);
+    const manifestPath = writeSnapshotManifest(root, "2026-09-07", mergedMainSha);
+    const manifest = readFileSync(join(root, manifestPath), "utf8");
+    assert.match(manifest, new RegExp(`^main_commit_sha ${mergedMainSha}$`, "mu"));
+    assert.match(manifest, new RegExp(`^${sha256File(join(root, pickPath))}  ${pickPath}$`, "mu"));
+    assert.equal(
+      createHash("sha256").update(readFileSync(join(root, manifestPath))).digest("hex").length,
+      64,
+    );
 
     const resultPath = `results/2026/${pickId}.json`;
     writeJson(root, resultPath, {
@@ -75,7 +83,6 @@ test("synthetic X-receipt publication flows through settlement, standings, and s
     assert.deepEqual(runValidation(root, {
       now: Date.parse("2026-09-06T18:30:00Z"),
       resultGatePaths: [resultPath],
-      requirePublicationEvidence: true,
     }), []);
 
     writeSettlements(root);

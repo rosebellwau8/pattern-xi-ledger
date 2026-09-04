@@ -1,131 +1,84 @@
-# DESIGN — Lean trust model
+# DESIGN — Three-layer evidence model
 
-**Status:** current from 2026-09-03. This design supersedes the exact-PR plus mandatory OpenTimestamps architecture rehearsed on 2026-09-02, before the formal 90-day run began.
+**Status:** frozen 2026-09-02; the architecture is in 90-day public-validation preparation.
 
 ## 1. Goal and boundary
 
-Pattern XI answers three practical questions:
+Pattern XI Ledger answers one narrow question: was the exact final content of a pick public at least two hours before kickoff, and is the formal record afterwards easy to audit and to check for anomalous changes?
 
-1. Was a complete public recommendation visibly posted at least two hours before kickoff, or was a subscriber-only recommendation committed before that cutoff?
-2. Is the disclosed history resistant to ordinary silent edits through the normal contribution workflow?
-3. Can settlement and performance be reproduced from the public inputs?
+It does not prove where the operator-entered scores or prices came from. Scores and prices are entered by the operator under the current schema and workflow. The system deliberately contains no database, no back office, no relay, no odds snapshots, no score-evidence service, no third-party APIs, no messaging channels and no signing infrastructure.
 
-The repository remains a static ledger implementation. It has no database, business backend, payment system, subscriber store, social-platform token or client-side application. PatternXI.com is the intended canonical product archive; during this static phase, GitHub Pages projects the same public repository data.
+## 2. Three-layer evidence model
 
-## 2. Evidence model
+### 2.1 Public publication witness
 
-### 2.1 Public pick receipt
+A pick first appears in a public GitHub PR. `Ledger integrity` runs against that PR's exact head SHA; the workflow checks out exactly that SHA and verifies the GitHub Actions run's `head_sha`. Publication time is the GitHub server-side `startedAt` of the first job attempt in which that exact SHA passed, and the gate script checks `kickoff_utc − startedAt ≥ 2h` against that event time.
 
-The complete public pick is posted on X. Its ledger receipt contains:
+Any byte-level change to a pick produces a new SHA and triggers a new check. The version finally merged must be the very version that passed the check; merging performs the formal admission — it does not define first publication. Ordinary Git author/committer timestamps can be set locally, amended or rebased; they are Git metadata, not GitHub server times, and play no part in prospective-publication proof.
 
-- the canonical X status URL;
-- the platform publication time in UTC;
-- the pick ID;
-- the SHA-256 of the exact canonical pick-file bytes.
+### 2.2 Independent cryptographic timestamp
 
-The receipt time must be at least two hours before the frozen kickoff. Equality at exactly two hours passes. The normal PR workflow rejects missing receipts, malformed URLs, late times, byte-hash mismatches and competing evidence.
+The daily manifest is a complete ledger-state snapshot, not a list of "picks added today". Each v2 manifest contains:
 
-The X post is third-party public evidence, not an immutable timestamp. X can display editing history for eligible posts and an account owner may delete a post. CI deliberately makes the narrower claim it can support: it validates the receipt record and byte relationships; a human auditor opens the linked X status and checks its content and displayed platform time.
+- the manifest version;
+- the snapshot date;
+- the corresponding `main` commit SHA;
+- the SHA-256 of the previous manifest's exact bytes;
+- the paths and SHA-256 hashes of every formal pick file in that `main` state.
 
-### 2.2 Subscriber batch commitment
+OpenTimestamps anchors the manifest to Bitcoin. It proves that a complete ledger state existed before a Bitcoin time anchor, and provides a cryptographic record for independently detecting later history alterations. A missed cron run misses no historical pick, because the next manifest re-covers the complete pick ledger. OTS is not the primary two-hour publication proof for each pick; the first layer — the public PR + Actions witness — is.
 
-A subscriber-only batch is serialized once as an exact JSON file:
+### 2.3 Append-only correction provenance
 
-```json
-{
-  "schema": "pattern-xi.subscriber-batch.v1",
-  "batch_id": "pxb-20260903-1600",
-  "nonce": "64 lowercase hex characters",
-  "picks": []
-}
-```
+CI rejects modification, deletion or renaming of published pick/result files. Corrections only add `.rN.json` files; `corrects` must cite the previous version's exact-byte SHA-256; chains must be linear, unforked, consecutively numbered and must actually change facts. Settlements and standings are rebuilt deterministically from raw facts, and CI checks the derived files for drift.
 
-The nonce is 256 random bits and remains private until reveal. It prevents practical dictionary guessing against the small, structured football-pick space. Picks are sorted by ID and each embedded pick must satisfy the normal pick schema.
+Published history is designed to make retrospective alteration detectable. Bitcoin-anchored manifests provide an independent cryptographic record of previously published ledger states.
 
-Before the earliest kickoff minus two hours, Pattern XI publishes the batch ID, pick count, earliest kickoff and SHA-256 of the exact file bytes on X. The public commitment file records that status URL and time. No canonicalisation is performed later: verification hashes the exact revealed bytes.
+## 3. Trust boundary
 
-After disclosure, `batch-reveal` checks the exact byte hash, count, earliest kickoff, nonce, embedded schemas and conflicts before copying the original bytes into `publication/reveals/` and installing the disclosed picks into `picks/`. Every formal pick must have exactly one evidence route: a public receipt or one revealed subscriber batch.
+| Fact to establish | Mechanism | Promise not made |
+|---|---|---|
+| The exact pick was public pre-kickoff | Public PR + exact head SHA + server-side `startedAt` of the successful `Ledger integrity` job + two-hour gate | No use of Git commit timestamps; no requirement to merge before kickoff |
+| A complete ledger state existed | Full pick manifest + main SHA + previous manifest SHA-256 + OpenTimestamps/Bitcoin | OTS does not replace the per-pick two-hour PR witness |
+| Corrections are traceable | Append-only diff gate + `.rN.json` + `corrects` exact-byte hash | No claim that the repository owner cannot theoretically change GitHub settings or history |
+| Settlements are reproducible | Frozen engine + 52-case golden dataset + deterministic rebuild | No third-party verification of operator-entered scores or prices |
 
-### 2.3 Append-only provenance and deterministic conclusions
+GitHub history, branch protection, public PRs and append-only validation sharply raise the cost and visibility of after-the-fact changes, but the repository owner still theoretically controls the account and repository configuration. Cryptographic evidence independent of GitHub history comes from the anchored manifests. The system has no database, dynamic back office or server private keys, which greatly reduces the operational attack surface; it still depends on the GitHub account, Actions, Pages and OpenTimestamps.
 
-CI treats these as authoritative append-only JSON:
+## 4. Data flow
 
 ```text
-picks/
-results/
-publication/receipts/
-publication/commitments/
-publication/reveals/
+production export
+      │
+      ▼
+public PR: exact head SHA + pick bytes
+      │
+      ▼
+GitHub-hosted Ledger integrity job
+public repository + head_sha match + server-side startedAt + ≥2h
+      │
+      ▼
+merge same checked version → formal main ledger → static Pages
+      │
+      ├── nightly full-state manifest (main SHA + all pick hashes + previous manifest hash)
+      │                                      │
+      │                                      ▼
+      │                          OpenTimestamps → Bitcoin
+      │
+      └── operator-entered result facts → settle → standings → site build
 ```
-
-Existing files may not be modified, deleted or renamed through a PR. Result corrections remain new `.rN.json` files whose `corrects` field is the SHA-256 of the previous file's exact bytes. Settlement and standings are derived and fully rebuildable.
-
-## 3. Data flow
-
-### Public pick
-
-```text
-production public export
-  → dry-run creates canonical pick IDs and restrained X copy
-  → operator posts complete picks on X
-  → receipt input records X URLs and platform UTC times
-  → publish command writes pick + exact-byte receipt
-  → validation and append-only PR
-  → deterministic settlement / standings / static site
-```
-
-Publication is not described as a distributed atomic transaction. A pick does not become formally admissible merely because an import or website write succeeded. The formal record needs the external receipt and must pass validation; a failed or late X publication cannot be backfilled as a valid Official Pick.
-
-### Subscriber batch
-
-```text
-private canonical pick objects
-  → random-nonce exact batch file
-  → SHA-256 + count + earliest kickoff posted on X
-  → public commitment file
-  → private subscriber delivery outside this repository
-  → post-event exact reveal
-  → canonical picks + results
-  → deterministic settlement / standings / static site
-```
-
-The commitment proves later-disclosed content matches the earlier hash. It does not itself prove subscriber delivery; delivery records belong to the future membership provider boundary.
-
-## 4. Source-of-truth direction
-
-```text
-raw picks + raw result chains + publication evidence
-                    ↓
-             settlement engine
-                    ↓
-                standings
-                    ↓
-        static HTML + ledger.json
-```
-
-Generated settlements, standings, `site-dist/` and `ledger.json` are never authoritative inputs. The site does not feed data back into the ledger.
 
 ## 5. Frozen settlement assets
 
 | Asset | Location | Constraint |
 |---|---|---|
-| Settlement Rules v1 | `src/settlement/` | Exact decimal, lifecycle boundaries and quarter-line splits |
-| Golden dataset | `fixtures/golden/settlement-v1.json` | 52 cases |
-| Performance projection | `src/performance/` | Rebuildable counts, ROI, cumulative return and zero-origin max drawdown |
-| Ledger validation | `scripts/lib.mjs` | Fail-closed schemas and correction chains |
-| Publication evidence | `scripts/publication-evidence.mjs` | Two-hour receipts, exact hashes, salted batch reveals |
+| Settlement Rules v1 engine | `src/settlement/` | Exact decimal, 48/168-hour boundaries, half-win/half-loss splits |
+| Golden dataset | `fixtures/golden/settlement-v1.json` | 52 cases, SHA-256 baseline prefix `2a752573…b855` |
+| Performance projection | `src/performance/` | N, ROI, cumulative return and max drawdown are rebuildable |
+| Ledger validation | `scripts/lib.mjs`, `scripts/validate-pr.mjs` | Schema, two-hour gate, append-only correction chains |
 
-## 6. Deliberate simplifications
+## 6. Architecture freeze
 
-The following are no longer required admission mechanisms:
+With the real GitHub PR, required check, merge, manifest/OTS workflow, settlement, standings and Pages deployment all verified, the architecture is frozen for 90-day public-validation preparation. During the freeze, no score-source verification, odds evidence, dynamic services, messaging channels or multi-operator signing will be added; bugs are fixed only in ways that keep the three-layer definitions consistent.
 
-- exact GitHub PR-head publication time;
-- GitHub Actions `startedAt` as the formal witness;
-- daily full-state manifests;
-- mandatory OpenTimestamps/Bitcoin anchoring.
-
-GitHub still provides append-only PR enforcement, public source history, deterministic checks and Pages hosting. OpenTimestamps may later anchor an occasional complete export as optional disaster insurance, but it must not be described as the two-hour proof for an individual pick.
-
-## 7. Future boundary
-
-X API automation, a PatternXI.com operational database, subscriber delivery, payment and membership access are intentionally outside this repository change. The current command renders exact X copy and records the resulting public receipt without storing credentials. If those services are introduced, they must preserve the evidence schemas and fail closed when an external receipt cannot be created before the cutoff.
+Operator note (2026-09-02): a site-only newsletter signup slot was added to the public pages on explicit operator instruction — a provider-agnostic static HTML form (currently Buttondown's no-JavaScript embed endpoint) with privacy/consent wording beside it. It adds no backend, no client-side JavaScript and no payments; it is not a ledger input, introduces no dynamic service into this repository, and no evidence layer depends on it, so it sits outside the freeze's scope.
