@@ -1,6 +1,6 @@
 # DESIGN — Three-layer evidence model
 
-**Status:** frozen 2026-09-02; the architecture is in 90-day public-validation preparation.
+**Status:** frozen 2026-09-02, re-affirmed 2026-09-04 (the 2026-09-03 PR #9 excursion to X-receipt evidence was reverted); the architecture is in 90-day public-validation preparation.
 
 ## 1. Goal and boundary
 
