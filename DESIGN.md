@@ -28,6 +28,8 @@ The daily manifest is a complete ledger-state snapshot, not a list of "picks add
 
 OpenTimestamps anchors the manifest to Bitcoin. It proves that a complete ledger state existed before a Bitcoin time anchor, and provides a cryptographic record for independently detecting later history alterations. A missed cron run misses no historical pick, because the next manifest re-covers the complete pick ledger. OTS is not the primary two-hour publication proof for each pick; the first layer — the public PR + Actions witness — is.
 
+Scheduled snapshots use `YYYY-MM-DD.txt`. Manual workflow dispatches append `YYYY-MM-DDTHHMMSSZ.txt` with an additional `snapshot_time_utc` field, so a post-merge snapshot can cover a new main commit on a day that already has a daily snapshot. Both filenames participate in the same chronological previous-manifest hash chain; existing manifests are never overwritten. The next daily snapshot chains from the latest manual snapshot. The declared snapshot time is metadata, not an independent time witness.
+
 ### 2.3 Append-only correction provenance
 
 CI rejects modification, deletion or renaming of published pick/result files. Corrections only add `.rN.json` files; `corrects` must cite the previous version's exact-byte SHA-256; chains must be linear, unforked, consecutively numbered and must actually change facts. Settlements and standings are rebuilt deterministically from raw facts, and CI checks the derived files for drift.
@@ -73,12 +75,24 @@ merge same checked version → formal main ledger → static Pages
 | Asset | Location | Constraint |
 |---|---|---|
 | Settlement Rules v1 engine | `src/settlement/` | Exact decimal, 48/168-hour boundaries, half-win/half-loss splits |
-| Golden dataset | `fixtures/golden/settlement-v1.json` | 52 cases, SHA-256 baseline prefix `2a752573…b855` |
+| Golden dataset | `fixtures/golden/settlement-v1.json` | 52 cases, SHA-256 `2a752573cd6abd45939093e18199b03bed23461703deddd050b89e2e16303ffd` |
 | Performance projection | `src/performance/` | N, ROI, cumulative return and max drawdown are rebuildable |
 | Ledger validation | `scripts/lib.mjs`, `scripts/validate-pr.mjs` | Schema, two-hour gate, append-only correction chains |
 
 ## 6. Architecture freeze
 
 With the real GitHub PR, required check, merge, manifest/OTS workflow, settlement, standings and Pages deployment all verified, the architecture is frozen for 90-day public-validation preparation. During the freeze, no score-source verification, odds evidence, dynamic services, messaging channels or multi-operator signing will be added; bugs are fixed only in ways that keep the three-layer definitions consistent.
+
+### Golden coverage and the case 045 exception
+
+The owner-reviewed fixture has 52 entries. CI asserts 47 direct settlement cases and 4 correction cases. SET-PROP-045 is an explicit applicability exception: it tests invalidating an unconfirmed database preview, including the `ENTERED` state, which this ledger does not implement. Here a result PR carries facts and regenerated settlements for review; updating the PR invalidates its old head check. Published results remain append-only. Do not count this workflow substitution as a passed 52nd engine behavior or add a database preview subsystem just to inflate the count.
+
+CI pins the exact fixture bytes and the v1 arithmetic source files. The four correction kinds also pass through validation, settlement revisions, standings and generated detail pages in integration tests. Assertions cover retained history and the current revision, including administrative changes followed by logic corrections.
+
+The current ledger supports the frozen v1 arithmetic implementation. Preserve it when adding a future rule version: versioned dispatch and an authoritative version binding for each affected revision must be implemented before admitting v2 records. Updating the v1 source and resetting its digest would rewrite rebuilds and is not an acceptable version migration. Derived settlement files are not independent historical engine snapshots; Git retains historical builds, while the pinned v1 source keeps current v1 arithmetic rebuilds stable.
+
+### Formal declaration
+
+`config/formal-window.json` is the single declaration source. Null/null keeps SHADOW RUN. An explicit PR declares a future UTC start and end exactly 90 days apart; official projections use the half-open interval `[start,end)`, while all-time projections remain separately labelled. The banner changes with the declaration, without depending on a nondeterministic build clock. Complete the synthetic CANCELLED result and audit regressions before declaring the window.
 
 Operator note (2026-09-02): a site-only newsletter signup slot was added to the public pages on explicit operator instruction — a provider-agnostic static HTML form (currently Buttondown's no-JavaScript embed endpoint) with privacy/consent wording beside it. It adds no backend, no client-side JavaScript and no payments; it is not a ledger input, introduces no dynamic service into this repository, and no evidence layer depends on it, so it sits outside the freeze's scope.

@@ -14,12 +14,76 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 
 import { buildSite, newsletterSlot } from "../scripts/build-site.mjs";
+import { loadFormalWindow, validateFormalWindow } from "../scripts/formal-window.mjs";
+import { REPO_ROOT } from "../scripts/lib.mjs";
+
+test("formal window validates configuration and includes start but excludes end across public pages", () => {
+  assert.doesNotThrow(() => loadFormalWindow(REPO_ROOT));
+  for (const value of [
+    { start_utc: null, end_utc: "2026-11-30T00:00:00Z" },
+    { start_utc: "2026-09-01T00:00:00Z", end_utc: null },
+    { start_utc: "bad", end_utc: "2026-11-30T00:00:00Z" },
+    { start_utc: "2026-09-01T00:00:00Z", end_utc: "2026-09-02T00:00:00Z" },
+  ]) assert.throws(() => validateFormalWindow(value));
+  const root = makeLedger();
+  try {
+    const win = fixtureWin(root);
+    fixtureLoss(root); // Before start: all-time loss, excluded from formal returns.
+    const endId = fixtureUpcoming(root);
+    const endPick = JSON.parse(readFileSync(join(root, `picks/2026/${endId}.json`), "utf8"));
+    rmSync(join(root, `picks/2026/${endId}.json`));
+    const lastId = "2026-11-30-boundary-ah";
+    writeJson(root, `picks/2026/${lastId}.json`, { ...endPick, id: lastId, kickoff_utc: "2026-11-30T18:00:00Z" });
+    const window = { start_utc: "2026-09-01T18:00:00Z", end_utc: "2026-11-30T18:00:00Z" };
+    writeJson(root, "config/formal-window.json", window);
+    buildSite(root);
+    const html = readFileSync(join(root, "site-dist/index.html"), "utf8");
+    assert.match(html, /Official Picks<\/dt><dd>1<\/dd>/u);
+    assert.match(html, /Total Profit \(Units\)<\/dt><dd class="positive">\+1<\/dd>/u);
+    assert.match(html, /2026-11-30T18:00:00Z \(exclusive\)/u);
+    for (const path of ["index.html", "track-record.html", "verification.html", `picks/${win}.html`]) {
+      const page = readFileSync(join(root, "site-dist", path), "utf8");
+      assert.doesNotMatch(page, /SHADOW RUN/u);
+      assert.match(page, /FORMAL WINDOW/u);
+    }
+    assert.match(readFileSync(join(root, "site-dist/track-record.html"), "utf8"), /Figures cover the whole current ledger/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("public curve headlines use exact half-up decimals and normalize rounded negative zero", () => {
+  const root = makeLedger();
+  try {
+    const id = fixtureWin(root);
+    const path = `picks/2026/${id}.json`;
+    const pick = JSON.parse(readFileSync(join(root, path), "utf8"));
+    for (const [price, headline] of [["2.005", "+1.005"], ["2.0055", "+1.006"], ["1.0004", "0.000"]]) {
+      writeJson(root, path, { ...pick, published_price: price, normalized_decimal_price: price });
+      if (price === "1.0004") {
+        fixtureLoss(root);
+        // +0.9996 - 1 = -0.0004; rounds to unsigned 0.000.
+        writeJson(root, path, { ...pick, published_price: "1.9996", normalized_decimal_price: "1.9996" });
+      }
+      buildSite(root);
+      for (const page of ["index.html", "track-record.html"]) {
+        const html = readFileSync(join(root, "site-dist", page), "utf8");
+        assert.ok(html.includes(`class="curve-value">${headline}`), `${price}: ${page}`);
+        assert.doesNotMatch(html, /class="curve-value">[−-]0\.000/u);
+      }
+      if (price === "2.005") assert.match(readFileSync(join(root, `site-dist/picks/${id}.html`), "utf8"), /\+1\.005/u);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function makeLedger() {
   const root = mkdtempSync(join(tmpdir(), "pattern-xi-site-test-"));
   for (const directory of ["picks/2026", "results/2026", "standings"]) {
     mkdirSync(join(root, directory), { recursive: true });
   }
+  writeJson(root, "config/formal-window.json", { start_utc: null, end_utc: null });
   return root;
 }
 
@@ -148,9 +212,9 @@ test("homepage binds the dark dashboard design to ledger data", () => {
     // KPI strip mixes official counts, live ledger counts and fixed facts.
     assert.match(html, /Official Picks<br>Current ledger/u);
     assert.match(html, /<strong>0<\/strong><span>Official Picks<br>Current ledger<\/span>/u);
-    assert.match(html, /<strong>2<\/strong><span>Settled Picks<br>Voids excluded<\/span>/u);
+    assert.match(html, /<strong>2<\/strong><span>Settled Picks<br>All-time, voids excluded<\/span>/u);
     assert.match(html, /Publication Gate<br>GitHub witness/u);
-    assert.match(html, /Golden Cases<br>Settlement v1/u);
+    assert.match(html, /Golden Cases<br>51 tested \+ 1 exception/u);
 
     // Two settled picks mean the equity curve is rendered for real.
     assert.match(html, /<polyline class="line" points=/u);

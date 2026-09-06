@@ -4,7 +4,7 @@
 // tree stays clean.
 
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -18,8 +18,90 @@ import {
 } from "../scripts/validate-pr.mjs";
 import { buildSettlements, main as writeSettlements } from "../scripts/settle.mjs";
 import { buildStandings } from "../scripts/standings.mjs";
+import { buildSite } from "../scripts/build-site.mjs";
 
 const TWO_HOURS = 2 * 60 * 60 * 1000;
+
+test("all four correction kinds preserve provenance through settlement, standings and public pages", () => {
+  for (const kind of ["SOURCE_DATA_ERROR", "OFFICIAL_RESULT_CORRECTION", "ADMINISTRATIVE_RESULT_CHANGE", "SETTLEMENT_LOGIC_ERROR"]) {
+    const root = makeLedger();
+    try {
+      const pick = samplePick({ line: "-0.50", published_price: "0.95", normalized_decimal_price: "1.95" });
+      writeJson(root, `picks/2026/${pick.id}.json`, pick);
+      const initial = { status: "PLAYED", home_score: 2, away_score: 1 };
+      const first = writeResult(root, pick.id, `${pick.id}.json`, initial);
+      const changed = kind === "SETTLEMENT_LOGIC_ERROR" ? initial : { status: "PLAYED", home_score: 0, away_score: 3 };
+      const second = writeResult(root, pick.id, `${pick.id}.r2.json`, {
+        ...changed, corrects: first, correction_kind: kind, note: "Reviewed correction.",
+        ...(kind === "SETTLEMENT_LOGIC_ERROR" ? {} : { evidence_refs: ["https://example.test/authority"] }),
+      });
+      assert.deepEqual(runValidation(root), [], kind);
+      const record = buildSettlements(root).settlements.get(pick.id);
+      const retained = kind === "ADMINISTRATIVE_RESULT_CHANGE" || kind === "SETTLEMENT_LOGIC_ERROR";
+      assert.equal(record.revisions.length, 2);
+      assert.equal(record.revisions[0].result.net_return, "0.95");
+      assert.equal(record.revisions[0].result_file_sha256, first);
+      assert.equal(record.current.result_file_sha256, second);
+      assert.equal(record.current.classification, retained ? "WIN" : "LOSS", kind);
+      assert.equal(record.current.net_return, retained ? "0.95" : "-1", kind);
+      assert.equal(buildStandings(root).total_net_return, retained ? "0.95" : "-1", kind);
+      assert.equal(buildStandings(root).n, 1);
+      buildSite(root, { start_utc: null, end_utc: null });
+      const html = readFileSync(join(root, `site-dist/picks/${pick.id}.html`), "utf8");
+      assert.match(html, /<td>r1<\/td>/u);
+      assert.match(html, /<td>r2<\/td>/u);
+      assert.match(html, new RegExp(`Classification</dt><dd>${retained ? "Won" : "Lost"}</dd>`, "u"));
+      if (kind === "ADMINISTRATIVE_RESULT_CHANGE") {
+        // The same score can later become an official sporting correction.
+        // Its equality with the administrative record must not make it a no-op.
+        writeResult(root, pick.id, `${pick.id}.r3.json`, { ...changed, corrects: second,
+          correction_kind: "OFFICIAL_RESULT_CORRECTION", note: "Official sporting score now revised.",
+          evidence_refs: ["https://example.test/official-correction"] });
+        assert.deepEqual(runValidation(root), []);
+        const later = buildSettlements(root).settlements.get(pick.id);
+        assert.equal(later.revisions[1].result.net_return, "0.95");
+        assert.equal(later.current.net_return, "-1");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("administrative evidence and later logic corrections retain sporting facts; key reordering is a no-op", () => {
+  const root = makeLedger();
+  try {
+    const pick = samplePick();
+    writeJson(root, `picks/2026/${pick.id}.json`, pick);
+    const facts = { status: "PLAYED", home_score: 2, away_score: 1 };
+    const first = writeResult(root, pick.id, `${pick.id}.json`, facts);
+    const admin = { ...facts, corrects: first, correction_kind: "ADMINISTRATIVE_RESULT_CHANGE",
+      administrative_score: { home: 0, away: 3 }, evidence_refs: ["https://example.test/decision"], note: "Administrative decision." };
+    const second = writeResult(root, pick.id, `${pick.id}.r2.json`, admin);
+    assert.deepEqual(runValidation(root), []);
+    writeResult(root, pick.id, `${pick.id}.r3.json`, { ...facts, corrects: second,
+      correction_kind: "SETTLEMENT_LOGIC_ERROR", note: "Recheck sporting settlement." });
+    assert.deepEqual(runValidation(root), []);
+    const record = buildSettlements(root).settlements.get(pick.id);
+    assert.equal(record.current.net_return, record.revisions[0].result.net_return);
+    assert.deepEqual(record.revisions[2].settlement_facts, record.revisions[0].facts);
+    writeResult(root, pick.id, `${pick.id}.r3.json`, { ...facts, home_score: 0, away_score: 3,
+      corrects: second, correction_kind: "SETTLEMENT_LOGIC_ERROR", note: "Wrongly reused administrative score." });
+    assert.match(runValidation(root)[0], /retained sporting facts/u);
+    writeResult(root, pick.id, `${pick.id}.r3.json`, { ...admin, corrects: second });
+    assert.match(runValidation(root)[0], /without changing/u);
+    rmSync(join(root, `results/2026/${pick.id}.r3.json`));
+    const unchanged = { schema: "pattern-xi.result.v1", pick_id: pick.id, ...facts };
+    writeJson(root, `results/2026/${pick.id}.r2.json`, { ...Object.fromEntries(Object.entries(unchanged).reverse()),
+      corrects: first, correction_kind: "SOURCE_DATA_ERROR", evidence_refs: ["https://example.test/source"], note: "Only reordered keys." });
+    assert.match(runValidation(root)[0], /without changing/u);
+    writeResult(root, pick.id, `${pick.id}.r2.json`, { ...facts, corrects: first,
+      correction_kind: "ADMINISTRATIVE_RESULT_CHANGE", evidence_refs: ["https://example.test/decision"], note: "Evidence only." });
+    assert.deepEqual(runValidation(root), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function makeLedger() {
   const root = mkdtempSync(join(tmpdir(), "pattern-xi-ledger-test-"));

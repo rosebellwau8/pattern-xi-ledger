@@ -9,7 +9,7 @@
 // zero-state snapshots; this generator ports their structure and styling and
 // binds every figure back to ledger data:
 //   - "90-Day Performance (Public)" and the "Official Picks" KPI count only
-//     the formal verification window (FORMAL_START_UTC below); during the
+//     the declared formal verification window; during the
 //     shadow run they correctly read zero.
 //   - every other panel (upcoming table, curve, record page) renders the
 //     whole current ledger, however the formal window is set.
@@ -22,6 +22,8 @@ import { isMainScript, REPO_ROOT, sha256File } from "./lib.mjs";
 import { buildSettlements } from "./settle.mjs";
 import { buildStandings } from "./standings.mjs";
 import { buildPerformanceProjection } from "../src/performance/performance-projection.ts";
+import { formatPublicDecimal } from "../src/settlement/settlement-engine.ts";
+import { inFormalWindow, loadFormalWindow, validateFormalWindow } from "./formal-window.mjs";
 
 const REPO_URL = "https://github.com/rosebellwau8/pattern-xi-ledger";
 
@@ -45,14 +47,8 @@ const NEWSLETTER = {
   buttonLabel: "Subscribe",
 };
 
-// Formal 90-day public-verification window. It opens with a single
-// declaration commit (DESIGN.md §6); until then the ledger is in SHADOW RUN
-// and official-window figures are legitimately zero — shadow-run picks do
-// not count towards the window. When the formal period begins, set this to
-// the declaration's start instant; official panels then count only picks
-// kicked off at or after that instant, computed by the same frozen
-// projection engine as the all-time standings.
-const FORMAL_START_UTC = null;
+// The declared UTC [start,end) window lives in config/formal-window.json.
+// Both null means shadow run. No build-time clock changes the record.
 
 const OUTCOME_EN = {
   WIN: "Won",
@@ -293,6 +289,7 @@ const STYLE = `
   .btn.primary:hover { color: #061109; filter: brightness(1.05); }
 
   .panel {
+    min-width:0;
     border: 1px solid var(--line);
     border-radius: 11px;
     background: linear-gradient(180deg, rgba(25,32,27,.96), rgba(20,26,22,.96));
@@ -376,7 +373,7 @@ const STYLE = `
   .picks-panel, .curve-panel { min-height: 266px; }
   .picks-panel { padding: 14px 16px 12px; }
   .curve-panel { padding: 14px 16px 12px; }
-  .table-wrap { overflow-x: auto; }
+  .table-wrap { max-width:100%; overflow-x:auto; }
   table { width:100%; border-collapse:collapse; font-size:.78rem; }
   th {
     padding: 8px 8px;
@@ -593,6 +590,7 @@ const STYLE = `
     padding:16px 0; border-bottom:1px solid var(--line);
   }
   .verify-step:last-child { border-bottom:none; padding-bottom:2px; }
+  .verify-step > div { min-width:0; }
   .step-no {
     width:42px; height:42px; display:grid; place-items:center;
     border:1px solid #3c674b; border-radius:10px; background:#12251a;
@@ -717,7 +715,7 @@ const STYLE = `
     .page-hero h1 { font-size:clamp(2.55rem,12vw,4rem); }
     .metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .section-panel, .verify-steps, .truth-card { padding:13px; }
-    .verify-step { grid-template-columns:38px 1fr; gap:10px; padding:13px 0; }
+    .verify-step { grid-template-columns:38px minmax(0,1fr); gap:10px; padding:13px 0; }
     .step-no { width:34px; height:34px; font-size:1rem; }
     .methodology-grid { grid-template-columns:1fr; }
     pre { font-size:.66rem; }
@@ -773,13 +771,12 @@ function fmtDrawdown(value) {
   return value === "0" ? "0" : `−${value}`;
 }
 
-// Display-only 2-dp rendering for the big curve headline figures; exact
-// strings remain in the tables where they are audit handles.
+// Public headlines use the frozen three-decimal half-up display contract.
 function fmtUnits(value) {
   if (value === null || value === undefined) return "—";
-  const text = Number(value).toFixed(2);
+  const text = formatPublicDecimal(String(value));
   if (text.startsWith("-")) return `−${text.slice(1)}`;
-  return text === "0.00" ? "0.00" : `+${text}`;
+  return text === "0.000" ? "0.000" : `+${text}`;
 }
 
 // Display-only cosmetic: exact strings keep their trailing zeros everywhere
@@ -854,14 +851,12 @@ function kpiCard(icon, value, labelLines, spark, extraClass = "") {
 // Official-window projection: reuses the frozen performance engine over the
 // picks inside the formal window, so every official figure is computed with
 // the same exact-decimal arithmetic as the all-time standings. While
-// FORMAL_START_UTC is null (shadow run) the projection is empty and the
+// the declared window is null (shadow run) the projection is empty and the
 // official panels legitimately read zero.
-function officialProjection(orderedPicks, settlements) {
-  if (FORMAL_START_UTC === null) return buildPerformanceProjection([]);
-  const start = Date.parse(FORMAL_START_UTC);
+export function officialProjection(orderedPicks, settlements, window) {
   const input = [];
   for (const pick of orderedPicks) {
-    if (pick.kickoffEpoch < start) continue;
+    if (!inFormalWindow(pick, window)) continue;
     const record = settlements.get(pick.id);
     const head = record?.current;
     const settledRevisions = head?.record_state === "SETTLED"
@@ -885,11 +880,11 @@ function officialProjection(orderedPicks, settlements) {
   return buildPerformanceProjection(input);
 }
 
-function formalNote() {
-  if (FORMAL_START_UTC === null) {
+function formalNote(window) {
+  if (window.start_utc === null) {
     return "Formal 90-day verification has not started. Shadow-run records are excluded.";
   }
-  return `Formal window counts picks kicked off on or after ${FORMAL_START_UTC.slice(0, 10)} (UTC).`;
+  return `Formal window counts kickoffs from ${window.start_utc} (inclusive) to ${window.end_utc} (exclusive).`;
 }
 
 // Deterministic inline SVG of the exact cumulative net return, in the chart
@@ -966,7 +961,7 @@ function curvePanel(curve, gradientId, chartWidth, chartHeight) {
   return `<article class="panel curve-panel" aria-label="Cumulative profit">
       <div class="panel-title">
         <div>
-          <h2>Cumulative Profit (Units)</h2>
+          <h2>All-time Profit (Units)</h2>
           <div class="curve-value">${esc(fmtUnits(curve.length === 0 ? "0" : curve[curve.length - 1].cumulative_net_return))}</div>
         </div>
         <a href="track-record.html">More →</a>
@@ -999,7 +994,7 @@ export function newsletterSlot(config = NEWSLETTER) {
     </article>`;
 }
 
-function page(title, description, body, activeNav, prefix = "") {
+function page(title, description, body, activeNav, prefix, window) {
   const navItems = [
     ["index.html", "Overview"],
     ["track-record.html", "Full Record"],
@@ -1046,7 +1041,7 @@ function page(title, description, body, activeNav, prefix = "") {
   </nav>
 </div></header>
 <div class="shadow-banner"><div class="wrap shadow-banner-inner">
-  <div><strong>SHADOW RUN — trial operation.</strong> Picks made in this phase do not count towards the formal 90-day public verification window.</div>
+  <div>${window.start_utc === null ? "<strong>SHADOW RUN — trial operation.</strong> Picks made in this phase do not count towards the formal 90-day public verification window." : `<strong>FORMAL WINDOW — 90-day public verification.</strong> ${esc(formalNote(window))}`}</div>
   <a href="${prefix}verification.html">Learn more →</a>
 </div></div>
 <main id="main" class="wrap ${activeNav === "index.html" ? "first-screen" : "page-main"}">
@@ -1054,15 +1049,15 @@ ${body}
 </main>
 <footer><div class="wrap footer-inner">
   <div><strong style="color:#a9b0a9">Pattern XI</strong> — a public, prospective, auditable football picks ledger.</div>
-  <div>Settlement Rules v1 · 52-case golden dataset · No server · No tracking · No client-side scripts</div>
+  <div>Settlement Rules v1 · 51 tested cases + 1 documented exception · No server · No tracking · No client-side scripts</div>
 </div></footer>
 </body>
 </html>
 `;
 }
 
-function buildIndexPage(orderedPicks, settlements, standings) {
-  const official = officialProjection(orderedPicks, settlements);
+function buildIndexPage(orderedPicks, settlements, standings, window) {
+  const official = officialProjection(orderedPicks, settlements, window);
   const upcoming = orderedPicks
     .filter((pick) => settlements.get(pick.id)?.current.record_state !== "SETTLED")
     .slice(0, 12);
@@ -1088,7 +1083,7 @@ function buildIndexPage(orderedPicks, settlements, standings) {
   const officialSparks = [];
   let running = 0;
   for (const pick of orderedPicks) {
-    if (FORMAL_START_UTC !== null && pick.kickoffEpoch < Date.parse(FORMAL_START_UTC)) continue;
+    if (!inFormalWindow(pick, window)) continue;
     running += 1;
     officialSparks.push(running);
   }
@@ -1126,15 +1121,15 @@ function buildIndexPage(orderedPicks, settlements, standings) {
       <div><dt>Average Price</dt><dd>${official.average_decimal_price === null ? "—" : esc(trimZeros(official.average_decimal_price))}</dd></div>
       <div><dt>Max Drawdown (Units)</dt><dd>${esc(fmtDrawdown(official.maximum_drawdown))}</dd></div>
     </dl>
-    <p class="summary-note">${esc(formalNote())}</p>
+    <p class="summary-note">${esc(formalNote(window))}</p>
   </aside>
 </section>
 
 <section class="kpi-strip" aria-label="At a glance">
   ${kpiCard("⌁", official.pick_count, "Official Picks<br>Current ledger", sparkPoints(officialSparks))}
-  ${kpiCard("◎", standings.n, "Settled Picks<br>Voids excluded", sparkPoints(netSpark))}
+  ${kpiCard("◎", standings.n, "Settled Picks<br>All-time, voids excluded", sparkPoints(netSpark))}
   ${kpiCard("⏱", "≥2h", "Publication Gate<br>GitHub witness", "2,29 18,29 34,29 50,22 66,22 82,22 98,15")}
-  ${kpiCard("◇", "52", "Golden Cases<br>Settlement v1", "2,29 18,26 34,28 50,21 66,22 82,17 98,18")}
+  ${kpiCard("◇", "52", "Golden Cases<br>51 tested + 1 exception", "2,29 18,26 34,28 50,21 66,22 82,17 98,18")}
 </section>
 
 <section class="dashboard-row">
@@ -1219,10 +1214,10 @@ ${upcoming.length === 0
     </ul>
   </article>
 </section>
-`, "index.html");
+`, "index.html", "", window);
 }
 
-function buildTrackRecordPage(orderedPicks, settlements, standings) {
+function buildTrackRecordPage(orderedPicks, settlements, standings, window) {
   const descending = [...orderedPicks].reverse();
   const rows = descending.map((pick) => {
     const current = settlements.get(pick.id)?.current;
@@ -1247,9 +1242,9 @@ function buildTrackRecordPage(orderedPicks, settlements, standings) {
     })
     .join("\n          ");
 
-  const trackNote = FORMAL_START_UTC === null
+  const trackNote = window.start_utc === null
     ? "Figures cover the whole current ledger. The formal 90-day verification window has not started; shadow-run picks do not count towards it."
-    : `Figures cover the whole current ledger. The formal 90-day window counts picks kicked off on or after ${FORMAL_START_UTC.slice(0, 10)}.`;
+    : `Figures cover the whole current ledger. ${formalNote(window)}`;
 
   return page("Full record",
     "Every pick Pattern XI has ever published, winners and losers alike — generated straight from the public Git ledger.",
@@ -1285,7 +1280,7 @@ function buildTrackRecordPage(orderedPicks, settlements, standings) {
 
 <section class="record-grid">
   <article class="panel section-panel" aria-label="Cumulative net return">
-    <div class="section-heading"><div><h2>Cumulative net return</h2><p>Exact-decimal return after each settled pick</p></div><div class="curve-value">${esc(fmtUnits(standings.cumulative_return_curve.length === 0 ? "0" : standings.cumulative_return_curve[standings.cumulative_return_curve.length - 1].cumulative_net_return))} Units</div></div>
+    <div class="section-heading"><div><h2>Cumulative net return (all-time)</h2><p>Exact-decimal return after each settled pick across the whole ledger</p></div><div class="curve-value">${esc(fmtUnits(standings.cumulative_return_curve.length === 0 ? "0" : standings.cumulative_return_curve[standings.cumulative_return_curve.length - 1].cumulative_net_return))} Units</div></div>
     <div class="curve-empty">
       ${curveChart(standings.cumulative_return_curve, 760, 220, "curveFillTrack") || emptyCurveChart(760, 220)}
       ${standings.cumulative_return_curve.length < 2 ? `<div class="curve-empty-message">The equity curve begins once two picks have settled.</div>` : ""}
@@ -1316,10 +1311,10 @@ ${descending.length === 0
   </div>
   <p class="fineprint">Each pick links to its own detail page with the frozen price, the result chain and the component-by-component settlement.</p>
 </section>
-`, "track-record.html");
+`, "track-record.html", "", window);
 }
 
-function buildVerificationPage() {
+function buildVerificationPage(window) {
   const code = (text) => `<pre><code>${esc(text)}</code></pre>`;
   return page("Verify it yourself",
     "Verify the exact-commit public PR witness, full-state Bitcoin timestamp and deterministic rebuild of the Pattern XI ledger.",
@@ -1343,23 +1338,23 @@ function buildVerificationPage() {
 
 <section id="five-minutes" class="verify-layout">
   <article class="panel verify-steps" aria-label="Five-minute verification">
-    <div class="section-heading"><div><h2>Five minutes, four commands</h2><p>Check the public witness, Bitcoin anchor and deterministic rebuild.</p></div></div>
+    <div class="section-heading"><div><h2>Verify the record step by step</h2><p>Check the public witness, Bitcoin anchor and deterministic rebuild.</p></div></div>
 
     <div class="verify-step"><div class="step-no">1</div><div><h3>Clone the repository</h3><p>The ledger is the repository. The site is merely a deterministic view of it.</p>${code(`git clone ${REPO_URL}.git\ncd pattern-xi-ledger`)}</div></div>
 
-    <div class="verify-step"><div class="step-no">2</div><div><h3>Verify the public publication witness</h3><p>Find the public PR head commit that introduced the pick. The earliest successful <em>Ledger integrity</em> job for that exact head SHA is the witness; its GitHub server-side <span class="mono">startedAt</span> must be at least two hours before kickoff. A changed pick has a new SHA and must pass again.</p>${code(`git log --all --diff-filter=A --format=%H -- picks/2026/<pick-file>.json\ngh run list --event pull_request --commit <head-sha> --workflow Check --status success --json databaseId,headSha,event,conclusion,url\ngh run view <run-id> --json headSha,jobs`)}</div></div>
+    <div class="verify-step"><div class="step-no">2</div><div><h3>Verify the public publication witness</h3><p>Use the addition commit to locate the merged public PR, then read its final headRefOid and compare the pick bytes with the selected main commit. The addition commit alone need not be the final PR head. The earliest successful <em>Ledger integrity</em> job for that exact head SHA is the witness; its GitHub server-side <span class="mono">startedAt</span> must be at least two hours before kickoff. A changed pick has a new SHA and must pass again. Inspect all relevant runs and their attempts (increase the list limit for older records); use the earliest successful Ledger integrity job for that head, even if a later attempt failed.</p>${code(`git log --all --diff-filter=A --format=%H -- picks/2026/<pick-file>.json\ngh api repos/rosebellwau8/pattern-xi-ledger/commits/<addition-sha>/pulls\ngh pr view <pr-number> --json headRefOid,mergeCommit,files,url\ngit fetch origin pull/<pr-number>/head\ngit diff --exit-code <head-sha> <main-commit-sha> -- picks/2026/<pick-file>.json\ngh run list --event pull_request --commit <head-sha> --workflow Check --limit 100 --json databaseId,headSha,event,conclusion,url\ngh run view <run-id> --json headSha,jobs\ngh api repos/rosebellwau8/pattern-xi-ledger/actions/runs/<run-id>/attempts/<attempt>/jobs`)}</div></div>
 
     <div class="verify-step"><div class="step-no">3</div><div><h3>Inspect a full ledger-state snapshot</h3><p>Every manifest names one exact <span class="mono">main</span> commit, lists the SHA-256 of every formal pick in that complete ledger state, and links to the previous manifest bytes.</p>${code(`git switch anchors\ncat manifests/<date>.txt\ngit show <main-commit-sha>:picks/2026/<pick-file>.json | sha256sum`)}</div></div>
 
     <div class="verify-step"><div class="step-no">4</div><div><h3>Verify the independent cryptographic timestamp</h3><p>OpenTimestamps proves that the full ledger-state snapshot existed before its Bitcoin time anchor. It is the independent second layer, not the primary two-hour witness for an individual pick.</p>${code(`pip install opentimestamps-client\nots verify manifests/<date>.txt.ots`)}</div></div>
 
-    <div class="verify-step"><div class="step-no">5</div><div><h3>Rebuild the entire record</h3><p>Recompute every settlement and the whole track record from raw picks and results. If rebuilt output differs from what is committed, the discrepancy is visible.</p>${code(`node scripts/settle.mjs && node scripts/standings.mjs && git diff --exit-code`)}</div></div>
+    <div class="verify-step"><div class="step-no">5</div><div><h3>Rebuild the entire record</h3><p>Switch back from anchors to the main snapshot you are verifying. Recompute every settlement and the whole track record from raw picks and results. If rebuilt output differs from what is committed, the discrepancy is visible.</p>${code(`git switch --detach <main-commit-sha>\nnode scripts/settle.mjs && node scripts/standings.mjs && node scripts/check-derived.mjs`)}</div></div>
   </article>
 
   <aside class="verify-side">
     <article class="panel truth-card"><h2>What this proves</h2><p><strong>Publication:</strong> the exact final pick version was publicly exposed and passed the GitHub-hosted two-hour gate.</p><p><strong>Historical state:</strong> Bitcoin-anchored manifests create an independent cryptographic record of previously published ledger states.</p><p><strong>Reproducibility:</strong> settlement and standings can be rebuilt deterministically from committed inputs.</p></article>
     <article class="panel truth-card"><h2>What it does not prove</h2><ul><li>Scores and prices remain operator-entered facts and are not independently verified here.</li><li>Repository owners still control GitHub settings; GitHub history itself is not cryptographically immutable.</li><li>The static design greatly reduces the operational attack surface but still depends on GitHub, Actions, Pages and OpenTimestamps.</li></ul></article>
-    <article class="panel truth-card"><h2>Settlement integrity</h2><p>Settlement mathematics is frozen under Settlement Rules v1 and guarded by a 52-case owner-reviewed golden dataset. Result facts are inputs; win / half-win / push / half-loss / loss / void and net return are program-derived.</p></article>
+    <article class="panel truth-card"><h2>Settlement integrity</h2><p>Settlement mathematics is frozen under Settlement Rules v1 and guarded by a 52-case owner-reviewed golden dataset (51 behavioral cases; database preview case 045 is explicitly exempted in DESIGN.md). Result facts are inputs; win / half-win / push / half-loss / loss / void and net return are program-derived.</p></article>
   </aside>
 </section>
 
@@ -1371,10 +1366,10 @@ function buildVerificationPage() {
     <article class="panel method-card"><div class="k">03 · HISTORY</div><h3>Corrections append; history stays visible</h3><p>Published inputs are not silently replaced. A correction references the prior file bytes and creates a linear provenance chain.</p></article>
   </div>
 </section>
-`, "verification.html");
+`, "verification.html", "", window);
 }
 
-function buildPickPage(pick, settlement) {
+function buildPickPage(pick, settlement, window) {
   const parts = kickoffParts(pick.kickoffUtc);
   const chain = settlement?.revisions ?? [];
   const current = settlement?.current;
@@ -1468,10 +1463,11 @@ ${components}
     </div>
   </article>
 </section>
-`, "track-record.html", "../");
+`, "track-record.html", "../", window);
 }
 
-export function buildSite(root) {
+export function buildSite(root, window = loadFormalWindow(root)) {
+  window = validateFormalWindow(window);
   const { picks, settlements } = buildSettlements(root);
   const standings = buildStandings(root);
   const orderedPicks = [...picks.values()].sort((left, right) =>
@@ -1481,11 +1477,11 @@ export function buildSite(root) {
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(join(dist, "picks"), { recursive: true });
 
-  writeFileSync(join(dist, "index.html"), buildIndexPage(orderedPicks, settlements, standings));
-  writeFileSync(join(dist, "track-record.html"), buildTrackRecordPage(orderedPicks, settlements, standings));
-  writeFileSync(join(dist, "verification.html"), buildVerificationPage());
+  writeFileSync(join(dist, "index.html"), buildIndexPage(orderedPicks, settlements, standings, window));
+  writeFileSync(join(dist, "track-record.html"), buildTrackRecordPage(orderedPicks, settlements, standings, window));
+  writeFileSync(join(dist, "verification.html"), buildVerificationPage(window));
   for (const pick of orderedPicks) {
-    writeFileSync(join(dist, "picks", `${pick.id}.html`), buildPickPage(pick, settlements.get(pick.id)));
+    writeFileSync(join(dist, "picks", `${pick.id}.html`), buildPickPage(pick, settlements.get(pick.id), window));
   }
 
   console.log(`site built: ${orderedPicks.length} picks, ${standings.n} counted`);

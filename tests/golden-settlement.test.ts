@@ -2,9 +2,10 @@
 // The normative 52-case oracle must behave identically after the move to the
 // ledger. The one omitted test (case 045 preview-hash binding) covered the
 // database operator workflow that the ledger replaces with PR review; see
-// DESIGN.md, "What replaces the operator workflow".
+// DESIGN.md, "Golden coverage and the case 045 exception".
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,12 +73,24 @@ function ordinaryFacts(value: GoldenCase): SettlementFacts | undefined {
 }
 
 test("normative settlement v1 fixture is exactly the frozen 52-case oracle", () => {
+  assert.equal(createHash("sha256").update(readFileSync(join(REPO_ROOT, "fixtures/golden/settlement-v1.json"))).digest("hex"),
+    "2a752573cd6abd45939093e18199b03bed23461703deddd050b89e2e16303ffd");
   assert.equal(dataset.status, "NORMATIVE_OWNER_REVIEWED_PASS");
   assert.equal(dataset.normative, true);
   assert.equal(dataset.case_count, 52);
   assert.equal(dataset.cases.length, 52);
   assert.deepEqual(dataset.cases.map((value) => value.id),
     Array.from({ length: 52 }, (_, index) => `SET-PROP-${String(index + 1).padStart(3, "0")}`));
+});
+
+test("frozen v1 arithmetic sources cannot silently rewrite historical revisions", () => {
+  for (const [path, digest] of [
+    ["src/settlement/settlement-engine.ts", "fe2c4a4f5d0bfb0217721c684bc9aff5d3ce6649477cc701253426fbbbe8ce06"],
+    ["src/settlement/exact-decimal.ts", "9e038c89ecdfb5b383527269113f0fef4085ae6cb0b8a970618cc16e539db4cd"],
+  ]) {
+    assert.equal(createHash("sha256").update(readFileSync(join(REPO_ROOT, path!))).digest("hex"), digest,
+      "Preserve the v1 implementation; a new engine needs versioned dispatch and a new reviewed oracle.");
+  }
 });
 
 test("all ordinary, postponed, cancelled, abandoned, and boundary oracle cases match", () => {
@@ -101,8 +114,8 @@ test("all ordinary, postponed, cancelled, abandoned, and boundary oracle cases m
       assert.deepEqual(actual.components, value.expected.components, `${value.id} components`);
     }
   }
-  // 47 direct cases; the 5 correction/review cases are covered below through
-  // buildCorrectionPreview.
+  // 47 direct cases + 4 correction cases below; 045 is the documented
+  // database preview/confirmation exception, not a passed behavioral case.
   assert.equal(checked, 47);
 });
 

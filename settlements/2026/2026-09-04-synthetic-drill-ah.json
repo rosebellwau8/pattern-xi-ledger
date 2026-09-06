@@ -1,0 +1,37 @@
+{
+  "schema": "pattern-xi.settlement.v1",
+  "pick_id": "2026-09-04-synthetic-drill-ah",
+  "kickoff_utc": "2026-09-04T16:00:00Z",
+  "frozen": {
+    "selection": "HOME",
+    "line": "-0.50",
+    "normalized_decimal_price": "1.95",
+    "frozen_scheduled_kickoff_at": "2026-09-04T16:00:00Z"
+  },
+  "revisions": [
+    {
+      "revision": 1,
+      "result_file": "results/2026/2026-09-04-synthetic-drill-ah.json",
+      "result_file_sha256": "cbd64ab085b6e80b712ae88f85e56f6d3ffb379e83ce7aaba28b8da55f77258d",
+      "facts": {
+        "match_status": "CANCELLED"
+      },
+      "settlement_facts": {
+        "match_status": "CANCELLED"
+      },
+      "result": {
+        "components": [],
+        "classification": "VOID",
+        "net_return": "0",
+        "record_state": "SETTLED"
+      }
+    }
+  ],
+  "current": {
+    "result_file": "results/2026/2026-09-04-synthetic-drill-ah.json",
+    "result_file_sha256": "cbd64ab085b6e80b712ae88f85e56f6d3ffb379e83ce7aaba28b8da55f77258d",
+    "classification": "VOID",
+    "net_return": "0",
+    "record_state": "SETTLED"
+  }
+}
