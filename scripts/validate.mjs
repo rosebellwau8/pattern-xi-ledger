@@ -7,6 +7,7 @@
 import { join } from "node:path";
 
 import { isMainScript, REPO_ROOT, validateLedger } from "./lib.mjs";
+import { loadFormalWindow } from "./formal-window.mjs";
 
 export function runValidation(root, { gatePaths = [], resultGatePaths = [], now } = {}) {
   return validateLedger(root, { gatePaths, resultGatePaths, now });
@@ -20,6 +21,7 @@ function main() {
     gatePaths = args.slice(gateIndex + 1).filter((value) => value !== "--");
   }
   const root = process.env.PATTERN_XI_LEDGER_ROOT ?? REPO_ROOT;
+  loadFormalWindow(root);
   const problems = runValidation(root, { gatePaths });
   if (problems.length > 0) {
     for (const problem of problems) console.error(`ERROR: ${problem}`);

@@ -3,9 +3,9 @@
   "unit_stake": "1",
   "rules": "settlement-rules.v1",
   "pick_count": 1,
-  "settled_count": 0,
-  "pending_count": 1,
-  "void_count": 0,
+  "settled_count": 1,
+  "pending_count": 0,
+  "void_count": 1,
   "n": 0,
   "classification_counts": {
     "WIN": 0,

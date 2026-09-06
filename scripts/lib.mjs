@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { ExactDecimal } from "../src/settlement/exact-decimal.ts";
 import { evaluateSettlement } from "../src/settlement/settlement-engine.ts";
+import { buildCorrectionPreview } from "../src/settlement/settlement-correction.ts";
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -153,10 +154,21 @@ export function validateResultObject(data, label) {
   checkNoExtras(data, [
     "schema", "pick_id", "status", "home_score", "away_score", "final_status",
     "actual_kickoff_at", "regulation_completed_at", "status_determined_at",
-    "interruption_disposition", "corrects", "correction_kind", "evidence_refs", "note",
+    "interruption_disposition", "corrects", "correction_kind", "evidence_refs", "note", "administrative_score",
   ], label);
 
   const pickId = requireString(data, "pick_id", label);
+  if (data.administrative_score !== undefined) {
+    const score = data.administrative_score;
+    if (data.correction_kind !== "ADMINISTRATIVE_RESULT_CHANGE" || data.corrects === undefined
+      || score === null || typeof score !== "object" || Array.isArray(score)) {
+      fail(`${label}.administrative_score is only valid on an administrative correction`);
+    }
+    checkNoExtras(score, ["home", "away"], `${label}.administrative_score`);
+    if (![score.home, score.away].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+      fail(`${label}.administrative_score must contain non-negative integer home and away scores`);
+    }
+  }
   if (PICK_ID.exec(pickId) === null) fail(`${label}.pick_id is not a pick id: ${pickId}`);
   if (!STATUSES.has(data.status)) {
     fail(`${label}.status must be one of ${[...STATUSES].join(", ")}`);
@@ -367,15 +379,28 @@ export function loadResultChains(root, picks) {
       }
       if (correctedHashes.has(current.hash)) fail(`result chain for ${pickId} forks at ${current.relativePath}`);
       correctedHashes.add(current.hash);
-      const parentContent = { ...current.data };
-      const childContent = { ...next.data };
+      let parentContent = { ...current.data };
+      let childContent = { ...next.data };
       for (const content of [parentContent, childContent]) {
         delete content.corrects;
         delete content.correction_kind;
         delete content.evidence_refs;
         delete content.note;
       }
-      if (JSON.stringify(parentContent) === JSON.stringify(childContent)
+      // Administrative evidence can append a decision without changing the
+      // sporting facts. Reordering keys or repeating the same evidence is not
+      // a new decision. Ordinary corrections must change engine input facts.
+      if (next.data.correction_kind === "ADMINISTRATIVE_RESULT_CHANGE") {
+        parentContent.evidence_refs = [...new Set(current.data.evidence_refs ?? [])].sort();
+        childContent.evidence_refs = [...new Set(next.data.evidence_refs ?? [])].sort();
+      } else {
+        // Compare with the last sporting revision, not an intervening
+        // administrative score that may happen to match the new official score.
+        const sportingParent = chain.findLast((file) => file.data.correction_kind !== "ADMINISTRATIVE_RESULT_CHANGE");
+        parentContent = factsForResult(sportingParent.data);
+        childContent = factsForResult(next.data);
+      }
+      if (canonicalJson(parentContent) === canonicalJson(childContent)
         && next.data.correction_kind !== "SETTLEMENT_LOGIC_ERROR") {
         fail(`${next.relativePath} corrects ${current.relativePath} without changing any result facts`);
       }
@@ -431,17 +456,44 @@ export function factsForResult(data) {
 }
 
 export function evaluateChain(pick, chain) {
-  return chain.map((file, index) => {
+  const revisions = [];
+  let sportingFacts;
+  for (const [index, file] of chain.entries()) {
     const facts = factsForResult(file.data);
-    const result = evaluateSettlement(pick.frozen, facts);
-    return {
+    const kind = file.data.correction_kind;
+    if (["SOURCE_DATA_ERROR", "OFFICIAL_RESULT_CORRECTION"].includes(kind)
+      && canonicalJson(facts) === canonicalJson(sportingFacts)) {
+      fail(`${file.relativePath} corrects the chain without changing any result facts`);
+    }
+    if (kind === "SETTLEMENT_LOGIC_ERROR" && canonicalJson(facts) !== canonicalJson(sportingFacts)) {
+      fail(`${file.relativePath} must use the retained sporting facts for SETTLEMENT_LOGIC_ERROR; use SOURCE_DATA_ERROR to correct facts`);
+    }
+    if (kind !== "ADMINISTRATIVE_RESULT_CHANGE") sportingFacts = facts;
+    const result = index === 0 ? evaluateSettlement(pick.frozen, sportingFacts) : buildCorrectionPreview({
+      official: pick.frozen,
+      priorResult: revisions[index - 1].result,
+      kind,
+      correctedFacts: sportingFacts,
+      correctionEvidenceRefs: file.data.evidence_refs?.map((reference) => ({ reference })),
+    });
+    revisions.push({
       revision: index + 1,
       result_file: file.relativePath,
       result_file_sha256: file.hash,
       facts,
+      settlement_facts: sportingFacts,
+      ...(kind === undefined ? {} : { correction_kind: kind }),
+      ...(file.data.administrative_score === undefined ? {} : { administrative_score: file.data.administrative_score }),
       result,
-    };
-  });
+    });
+  }
+  return revisions;
+}
+
+function canonicalJson(value) {
+  if (value === undefined || value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
 }
 
 export function validateLedger(root, options = {}) {
@@ -459,7 +511,10 @@ export function validateLedger(root, options = {}) {
   collect(() => { picks = loadPicks(root); });
   if (picks === undefined) return problems;
 
-  collect(() => { loadResultChains(root, picks); });
+  collect(() => {
+    const chains = loadResultChains(root, picks);
+    for (const [id, chain] of chains) evaluateChain(picks.get(id), chain);
+  });
 
   if (options.gatePaths !== undefined && options.gatePaths.length > 0) {
     const now = options.now ?? Date.now();

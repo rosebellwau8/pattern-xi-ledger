@@ -67,4 +67,4 @@ jobs:
           node scripts/standings.mjs
 
       - name: Require derived files to be current
-        run: git diff --exit-code -- settlements standings
+        run: node scripts/check-derived.mjs
