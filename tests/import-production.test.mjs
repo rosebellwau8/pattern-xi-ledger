@@ -4,8 +4,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { importProductionExport, normalizeProductionExport } from "../scripts/import-production.mjs";
+import { importProductionExport, normalizeProductionExport, zonedLocalToUtc } from "../scripts/import-production.mjs";
 import { runValidation } from "../scripts/validate.mjs";
+
+test("production import rejects DST folds, gaps and invalid dates before generating a gateable pick", () => {
+  for (const [local, zone] of [
+    ["2026-10-25 01:30", "Europe/London"],
+    ["2026-11-01 01:30", "America/New_York"],
+    ["2026-04-05 01:45", "Australia/Lord_Howe"],
+    ["2026-03-29 01:30", "Europe/London"],
+    ["2026-02-30 12:00", "Asia/Shanghai"],
+  ]) {
+    assert.throws(() => zonedLocalToUtc(local, zone), /real, unambiguous/u);
+  }
+  assert.equal(zonedLocalToUtc("2026-10-25 02:30", "Europe/London"), "2026-10-25T02:30:00Z");
+  assert.equal(zonedLocalToUtc("2026-09-06 18:00", "Asia/Shanghai"), "2026-09-06T10:00:00Z");
+  const root = mkdtempSync(join(tmpdir(), "pattern-xi-dst-test-"));
+  try {
+    const data = sampleExport();
+    data.matches = [data.matches[0]];
+    data.matches[0].kickoff = { local: "2026-10-25 01:30", timezone: "Europe/London" };
+    assert.throws(() => importProductionExport(root, data), /real, unambiguous/u);
+    assert.equal(existsSync(join(root, "picks")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function sampleExport() {
   return {
@@ -109,4 +133,3 @@ test("dry run performs no writes and invalid export data fails closed", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
-

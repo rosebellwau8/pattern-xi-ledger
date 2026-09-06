@@ -33,6 +33,8 @@ test("synthetic exact-SHA publication flows through snapshot, settlement, standi
     runGit(root, ["init", "--initial-branch=main"]);
     runGit(root, ["config", "user.name", "Pattern XI rehearsal"]);
     runGit(root, ["config", "user.email", "rehearsal@example.invalid"]);
+    runGit(root, ["config", "core.autocrlf", "false"]);
+    writeJson(root, "config/formal-window.json", { start_utc: null, end_utc: null });
     runGit(root, ["commit", "--allow-empty", "-m", "base"]);
     const baseSha = runGit(root, ["rev-parse", "HEAD"]);
 

@@ -57,22 +57,28 @@ export function zonedLocalToUtc(value, timeZone) {
   }
 
   const targetEpochLikeUtc = Date.UTC(target.year, target.month - 1, target.day, target.hour, target.minute, 0);
-  let candidate = targetEpochLikeUtc;
   const partsAt = (epoch) => Object.fromEntries(
     formatter.formatToParts(new Date(epoch))
       .filter((part) => part.type !== "literal")
       .map((part) => [part.type, Number(part.value)]),
   );
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const shown = partsAt(candidate);
+  // Collect offsets on both sides of nearby transitions, including half-hour
+  // changes and date-line changes. A round trip alone cannot detect a fold.
+  const offsets = new Set();
+  for (let hour = -48; hour <= 48; hour += 1) {
+    const probe = targetEpochLikeUtc + hour * 60 * 60 * 1000;
+    const shown = partsAt(probe);
     const shownEpochLikeUtc = Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute, shown.second);
-    candidate += targetEpochLikeUtc - shownEpochLikeUtc;
+    offsets.add(shownEpochLikeUtc - probe);
   }
-  const verified = partsAt(candidate);
-  if (["year", "month", "day", "hour", "minute", "second"].some((key) => verified[key] !== target[key])) {
+  const candidates = [...offsets].map((offset) => targetEpochLikeUtc - offset).filter((candidate) => {
+    const verified = partsAt(candidate);
+    return ["year", "month", "day", "hour", "minute", "second"].every((key) => verified[key] === target[key]);
+  });
+  if (candidates.length !== 1) {
     fail(`kickoff.local is not a real, unambiguous time in ${zone}: ${local}`);
   }
-  return new Date(candidate).toISOString().replace(".000Z", "Z");
+  return new Date(candidates[0]).toISOString().replace(".000Z", "Z");
 }
 
 function normalizeLine(value, label) {
@@ -207,4 +213,3 @@ function main() {
 }
 
 if (isMainScript(import.meta.url)) main();
-

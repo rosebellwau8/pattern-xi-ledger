@@ -16,6 +16,7 @@
     "publish": "node scripts/publish-production.mjs",
     "settle": "node scripts/settle.mjs",
     "standings": "node scripts/standings.mjs",
+    "check:derived": "node scripts/check-derived.mjs",
     "manifest": "node scripts/manifest.mjs",
     "build": "node scripts/build-site.mjs"
   },

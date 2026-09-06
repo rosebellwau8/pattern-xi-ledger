@@ -98,3 +98,13 @@ Freeze re-acceptance evidence (all publicly checkable GitHub measurements):
 | Site deployment | Pages deployed `c1ffa35`; the homepage and `verification.html` were measured serving the three-layer evidence model content (public PR + exact-SHA Actions witness; full-state Bitcoin-anchored manifests; append-only corrections) |
 
 Drill-pick disposition: `2026-09-04-synthetic-drill-ah` is an explicitly synthetic rehearsal fixture inside the shadow-run window; after its kickoff a `CANCELLED` result is appended so it settles `VOID` and never affects returns. It remains in the append-only ledger as the permanent end-to-end rehearsal record.
+
+## Local audit remediation (2026-09-06; publication pending)
+
+The local remediation adds strict DST-fold rejection to production import, four-kind correction semantics with retained sporting facts, key-order-independent no-op checks, commit-blob manifests, and a derived-file gate that includes untracked outputs. Headlines now use exact three-decimal half-up formatting. The formal window is configured as a validated UTC [start,end) interval; null/null remains SHADOW RUN.
+
+The synthetic rehearsal now has an appended CANCELLED result and rebuilt VOID settlement. It remains in the permanent all-time ledger, with n=0 and no returns. The golden fixture's full digest is corrected and pinned; case 045 is explicitly exempted as a removed database workflow, not counted as a passed behavior.
+
+These are local changes awaiting the repository PR process. Historical workflow and branch-protection measurements above are dated evidence, not a new assertion that this remediation has been merged, deployed or Bitcoin-confirmed. Formal verification has not been started.
+
+Mobile remediation: actual 375px and 390px browser checks found remaining overflow in the overview, verification and pick detail grids. Grid items now shrink to the available width while tables and command blocks scroll inside their containers. All four generated page types were rechecked at both widths with document width equal to viewport width.

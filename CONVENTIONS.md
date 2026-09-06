@@ -33,7 +33,7 @@ Status mapping (per Settlement Rules v1):
 | `PLAYED` | `home_score`, `away_score` | Settles normally; VOID if `actual_kickoff_at` is more than 48h after the frozen kickoff |
 | `POSTPONED` | New kickoff: `actual_kickoff_at`; on completion also `final_status: "FINISHED"` and the score; no new kickoff: `status_determined_at` | VOID beyond 48h, otherwise PENDING; normal settlement if completed within 48h |
 | `CANCELLED` | — | VOID immediately |
-| `ABANDONED` | `actual_kickoff_at`, `interruption_disposition`; `RESUMED_SAME_FIXTURE` also needs `regulation_completed_at` and the score; `UNKNOWN` needs `status_determined_at` | Settles if the same fixture completes within 48h; replayed or abandoned fixtures are VOID; UNKNOWN is VOID beyond 168h |
+| `ABANDONED` | `actual_kickoff_at`, `interruption_disposition`; `RESUMED_SAME_FIXTURE` also needs `regulation_completed_at` and the score; `UNKNOWN` needs `status_determined_at` | Settles if the same fixture completes within 48h; replayed or abandoned fixtures are VOID; UNKNOWN is VOID at or beyond 168h |
 
 ## 4. Correction rules (append-only, never overwrite)
 
@@ -43,14 +43,24 @@ Status mapping (per Settlement Rules v1):
   2. `SETTLEMENT_LOGIC_ERROR` — engine or rule application error (needs recomputation with the correct score);
   3. `OFFICIAL_RESULT_CORRECTION` — the official score was revised (evidence hierarchy: competition governing body > official data provider > club official; ordinary score websites are not authoritative);
   4. `ADMINISTRATIVE_RESULT_CHANGE` — administrative reclassification; the original sporting settlement stands.
+- Administrative corrections may append evidence without changing the sporting facts. Prefer retaining the sporting score in `home_score` / `away_score` and recording the administrative decision separately as `administrative_score: { "home": 0, "away": 3 }`. A changed top-level administrative score also never replaces the retained sporting facts. Repeated identical facts and evidence are rejected regardless of JSON key order; changing only the note is not a new administrative decision.
+- Derived revisions expose both `facts` (the recorded status/score) and `settlement_facts` (the retained sporting facts actually used). An administrative revision copies the previous sporting settlement. A later `SETTLEMENT_LOGIC_ERROR` must supply those retained sporting facts; factual amendments use `SOURCE_DATA_ERROR` or `OFFICIAL_RESULT_CORRECTION`. These two kinds must change sporting facts, even after an administrative revision.
 - Pick files are immutable once merged — a pick is an immutable quotation record. If one is wrong, publish a new pick declaring the void and keep the old record.
 
 ## 5. Settlement rules version
 
 - Settlement semantics are frozen as Settlement Rules v1 (52-case golden dataset, `fixtures/golden/settlement-v1.json`; SHA-256 baseline prefix in [DESIGN.md](DESIGN.md)).
-- The golden dataset is a CI-enforced regression: any code change that alters one of the 52 cases is rejected.
+- CI checks the frozen dataset's exact SHA-256 and 51 case behaviors (47 direct engine cases and 4 correction cases). Case 045 concerns the replaced database preview/confirmation workflow and is explicitly exempted; see DESIGN.md, "Golden coverage and the case 045 exception". Four correction kinds additionally have ledger-to-site regression coverage. This is not a claim of 52/52 behavioral coverage.
 - Changing the settlement rules means a new version number, a new golden dataset and an explicit PR declaration; history is never recalculated retroactively (projections freeze to the rules version in force at settlement time).
 
 ## 6. Derived-file discipline
 
-`settlements/` and `standings/` are derived files: they must stay consistent with the raw data (`settle.mjs` clears and fully rebuilds settlements, and CI then runs `git diff --exit-code`). A PR recording results must include the derived changes so reviewers see the computed outcome directly in the diff. Suspect a number? Delete the derived files and rebuild.
+`settlements/` and `standings/` are derived files: they must stay consistent with the raw data (`settle.mjs` clears and fully rebuilds settlements, and CI then runs `node scripts/check-derived.mjs`). The gate includes untracked, ignored, staged, modified and deleted derived files. A PR recording results must include the derived changes so reviewers see the computed outcome directly in the diff. Suspect a number? Delete the derived files and rebuild.
+
+## 7. Formal validation window and public display
+
+- `config/formal-window.json` declares the formal window. Both values are null during the shadow run. Starting formal verification requires one declaration PR with explicit `start_utc` and `end_utc`, exactly 90 UTC days apart, chosen before the formal period begins. Never backdate a declaration to select observed outcomes.
+- Official figures include kickoffs in `[start_utc, end_utc)`: include the start, exclude the end. The site uses the same window for official counts and their sparklines. Full-record standings and the all-time curve continue to show the complete ledger and are labelled accordingly. Ending the window does not remove pending results or later corrections for included picks.
+- The synthetic rehearsal is closed by an appended CANCELLED result (VOID). It remains visible in the all-time record and is excluded from return calculations and `n`; the future formal window starts after the shadow run.
+- Public curve headlines use three decimal places, exact half-up rounding, and unsigned zero when rounding to zero. Tables keep exact ledger strings. Floating-point conversions are permitted for chart geometry, not financial headline values.
+- Production exports with ambiguous or nonexistent local kickoff times are rejected before import. The exporter must resolve the instant, for example by supplying its unambiguous UTC local representation with timezone `UTC`. Guessing a DST fold is not permitted.
