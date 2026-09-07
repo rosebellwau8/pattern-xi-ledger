@@ -1,0 +1,6 @@
+{
+  "schema": "pattern-xi.result.v1",
+  "pick_id": "2026-09-07-fixture-657a389d35ba-ah",
+  "status": "CANCELLED",
+  "note": "Acceptance C: closing the synthetic O2 drill fixture as planned (not a real fixture; excluded from returns by the ledger engine)."
+}
