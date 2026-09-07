@@ -17,6 +17,7 @@
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import zlib from "node:zlib";
 
 import { isMainScript, REPO_ROOT, sha256File } from "./lib.mjs";
 import { buildSettlements } from "./settle.mjs";
@@ -26,6 +27,253 @@ import { formatPublicDecimal } from "../src/settlement/settlement-engine.ts";
 import { inFormalWindow, loadFormalWindow, validateFormalWindow } from "./formal-window.mjs";
 
 const REPO_URL = "https://github.com/rosebellwau8/pattern-xi-ledger";
+
+// Public origin of the static site. Used only for absolute references that
+// external systems require (canonical URLs, Open Graph/Twitter cards, feed
+// <link> targets, sitemap URLs, og:image). Every in-page navigation link
+// stays relative so the site keeps working from any mirror path.
+const SITE_URL = "https://rosebellwau8.github.io/pattern-xi-ledger";
+
+// RSS/Atom-style public distribution interface (master prompt #9). Feeds are
+// generated one-way from the ledger by this build; they are never an input to
+// settlement, standings or any evidence layer. pubDate on pick items is the
+// fixture kickoff (UTC) - the only timestamp the frozen pick schema carries;
+// prospective *publication* is proven by the PR + Ledger integrity witness,
+// never by this feed. Item GUIDs are the permanent detail-page URLs: pick
+// files are immutable and result corrections update an item in place, so a
+// correction can never produce a duplicate feed item. No build-time clock is
+// consulted anywhere (no lastBuildDate), keeping the build byte-deterministic.
+function rfc822(iso) {
+  return new Date(iso).toUTCString();
+}
+
+function modeLabel(window) {
+  return window.start_utc === null ? "shadow run" : "formal window";
+}
+
+function xmlItem({ title, link, description, pubDate }) {
+  return `    <item>
+      <title>${esc(title)}</title>
+      <link>${esc(link)}</link>
+      <guid isPermaLink="true">${esc(link)}</guid>
+      <pubDate>${rfc822(pubDate)}</pubDate>
+      <description>${esc(description)}</description>
+    </item>`;
+}
+
+function rssChannel({ kind, window, items }) {
+  const mode = modeLabel(window);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Pattern XI — ${kind} (${mode})</title>
+    <link>${SITE_URL}/</link>
+    <description>Public, prospective, auditable football Asian-handicap ${kind.toLowerCase()} from the Pattern XI ledger. Item pubDate is the fixture kickoff (UTC); prospective publication is proven by the public PR + Ledger integrity witness — see ${SITE_URL}/verification.html. Settlements are computed by the frozen Settlement Rules v1 engine.</description>
+    <language>en-GB</language>
+${items.join("\n")}
+  </channel>
+</rss>
+`;
+}
+
+export function buildPicksFeed(orderedPicks, settlements, window) {
+  const items = [...orderedPicks]
+    .sort((left, right) => right.kickoffEpoch - left.kickoffEpoch || right.id.localeCompare(left.id))
+    .map((pick) => {
+      const current = settlements.get(pick.id)?.current;
+      const state = current === undefined
+        ? "Awaiting result."
+        : `${OUTCOME_EN[current.classification] ?? current.classification}.`;
+      return xmlItem({
+        title: `${pick.data.match} — ${selectionLabel(pick.frozen)}`,
+        link: `${SITE_URL}/picks/${pick.id}.html`,
+        description: `${pick.data.competition}. Kickoff ${pick.kickoffUtc}. Asian handicap ${pick.frozen.selection} ${pick.frozen.line} @ ${pick.frozen.normalized_decimal_price} (${pick.data.published_price_format}). Price source: ${pick.data.price_source}. ${state}`,
+        pubDate: pick.kickoffUtc,
+      });
+    });
+  return rssChannel({ kind: "Picks", window, items });
+}
+
+export function buildResultsFeed(orderedPicks, settlements, window) {
+  const items = [...orderedPicks]
+    .filter((pick) => settlements.get(pick.id)?.current !== undefined)
+    .sort((left, right) => right.kickoffEpoch - left.kickoffEpoch || right.id.localeCompare(left.id))
+    .map((pick) => {
+      const current = settlements.get(pick.id).current;
+      const outcome = OUTCOME_EN[current.classification] ?? current.classification;
+      const net = current.net_return === null ? "void — excluded from returns" : `net ${current.net_return} units`;
+      return xmlItem({
+        title: `${pick.data.match} — ${outcome}`,
+        link: `${SITE_URL}/picks/${pick.id}.html`,
+        description: `${pick.data.competition}. Kickoff ${pick.kickoffUtc}. Asian handicap ${pick.frozen.selection} ${pick.frozen.line} @ ${pick.frozen.normalized_decimal_price}. Settled by the frozen Settlement Rules v1 engine: ${outcome} (${net}). Facts and any corrections live in the append-only ledger.`,
+        pubDate: pick.kickoffUtc,
+      });
+    });
+  return rssChannel({ kind: "Results", window, items });
+}
+
+export function buildSitemap(orderedPicks) {
+  const urls = [
+    "index.html",
+    "track-record.html",
+    "verification.html",
+    ...orderedPicks.map((pick) => `picks/${pick.id}.html`),
+  ].map((path) => `  <url><loc>${SITE_URL}/${path}</loc></url>`);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.join("\n")}
+</urlset>
+`;
+}
+
+export function buildRobots() {
+  return `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
+}
+
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0d110f"/>
+  <rect x="3" y="3" width="58" height="58" rx="11" fill="none" stroke="#364039" stroke-width="2"/>
+  <text x="32" y="42" font-family="Georgia, serif" font-size="26" font-weight="bold" fill="#6fce91" text-anchor="middle">XI</text>
+</svg>
+`;
+
+function build404Page() {
+  // Served by GitHub Pages for every missing path at any depth, so every link
+  // must be absolute - relative navigation would break under nested URLs.
+  const home = `${SITE_URL}/`;
+  return `<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Page not found · Pattern XI</title>
+<link rel="canonical" href="${home}404.html">
+<link rel="icon" type="image/svg+xml" href="${home}favicon.svg">
+<style>${STYLE}</style>
+</head>
+<body>
+<main id="main" class="wrap page-main" style="min-height:60vh;display:flex;flex-direction:column;justify-content:center">
+  <h1>Page not found</h1>
+  <p class="muted">The ledger is append-only, but this URL is not part of it.</p>
+  <p>
+    <a class="btn" href="${home}index.html">Overview</a> ·
+    <a class="btn" href="${home}track-record.html">Full Record</a> ·
+    <a class="btn" href="${home}verification.html">Verify It Yourself</a>
+  </p>
+</main>
+</body>
+</html>
+`;
+}
+
+// Deterministic 1200x630 brand image for Open Graph / X cards: dark pitch
+// gradient, a thin frame, and the block-letter "XI" monogram. Rendered from
+// code (no fonts, no network, no clock) so every build produces identical
+// bytes. PNG encoding is hand-rolled (zlib + CRC32) to keep the repo
+// dependency-free.
+function renderOgImagePng() {
+  const width = 1200;
+  const height = 630;
+  const pixels = Buffer.alloc(width * height * 4);
+  const top = [12, 16, 14];
+  const bottom = [16, 24, 21];
+  for (let y = 0; y < height; y += 1) {
+    const t = y / (height - 1);
+    const base = top.map((channel, index) => Math.round(channel + (bottom[index] - channel) * t));
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 4;
+      pixels[offset] = base[0];
+      pixels[offset + 1] = base[1];
+      pixels[offset + 2] = base[2];
+      pixels[offset + 3] = 255;
+    }
+  }
+  const set = (x, y, [r, g, b]) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const offset = (y * width + x) * 4;
+    pixels[offset] = r;
+    pixels[offset + 1] = g;
+    pixels[offset + 2] = b;
+  };
+  const frame = [54, 64, 57];
+  for (let x = 24; x < width - 24; x += 1) {
+    set(x, 24, frame);
+    set(x, 25, frame);
+    set(x, height - 26, frame);
+    set(x, height - 25, frame);
+  }
+  for (let y = 24; y < height - 24; y += 1) {
+    set(24, y, frame);
+    set(25, y, frame);
+    set(width - 26, y, frame);
+    set(width - 25, y, frame);
+  }
+  // Block-letter monogram "XI" on a hand-defined grid (rows of on-cells).
+  const glyphs = {
+    X: ["X...X", "X...X", ".X.X.", "..X..", ".X.X.", "X...X", "X...X"],
+    I: ["XXXXX", "..X..", "..X..", "..X..", "..X..", "..X..", "XXXXX"],
+  };
+  const cell = 44;
+  const gap = 2;
+  const gridWidth = (5 + gap + 5) * cell;
+  const gridHeight = 7 * cell;
+  const originX = Math.floor((width - gridWidth) / 2);
+  const originY = Math.floor((height - gridHeight) / 2) - 20;
+  const green = [111, 206, 145];
+  const cream = [238, 232, 215];
+  let cursor = originX;
+  for (const letter of ["X", "I"]) {
+    const rows = glyphs[letter];
+    const color = letter === "X" ? green : cream;
+    for (let row = 0; row < rows.length; row += 1) {
+      for (let column = 0; column < rows[row].length; column += 1) {
+        if (rows[row][column] !== "X") continue;
+        for (let dy = 0; dy < cell; dy += 1) {
+          for (let dx = 0; dx < cell; dx += 1) {
+            set(cursor + column * cell + dx, originY + row * cell + dy, color);
+          }
+        }
+      }
+    }
+    cursor += (5 + gap) * cell;
+  }
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    raw[y * (width * 4 + 1)] = 0;
+    pixels.copy(raw, y * (width * 4 + 1) + 1, y * width * 4, (y + 1) * width * 4);
+  }
+  const crcTable = new Int32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crcTable[n] = c;
+  }
+  const crc32 = (buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buffer) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // colour type: RGBA
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", zlib.deflateSync(raw, { level: 9 })),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
 
 // Newsletter signup slot. The slot is provider-agnostic: it renders whatever
 // plain HTML POST endpoint this one object declares, so moving to a different
@@ -994,7 +1242,7 @@ export function newsletterSlot(config = NEWSLETTER) {
     </article>`;
 }
 
-function page(title, description, body, activeNav, prefix, window) {
+function page(title, description, body, activeNav, prefix, window, canonicalPath = "") {
   const navItems = [
     ["index.html", "Overview"],
     ["track-record.html", "Full Record"],
@@ -1012,6 +1260,8 @@ function page(title, description, body, activeNav, prefix, window) {
   const mobileNav = mobileItems.map(([href, label]) =>
     `<a href="${prefix}${href}"${href === activeNav ? ' aria-current="page"' : ""}>${label}</a>`).join("\n      ");
   const subscribeHref = activeNav === "index.html" ? "#newsletter" : `${prefix}index.html#newsletter`;
+  const canonicalUrl = `${SITE_URL}/${canonicalPath}`;
+  const socialImage = `${SITE_URL}/og-image.png`;
   return `<!doctype html>
 <html lang="en-GB">
 <head>
@@ -1019,6 +1269,20 @@ function page(title, description, body, activeNav, prefix, window) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <meta name="description" content="${esc(description)}">
+<link rel="canonical" href="${esc(canonicalUrl)}">
+<link rel="icon" type="image/svg+xml" href="${prefix}favicon.svg">
+<link rel="alternate" type="application/rss+xml" title="Pattern XI — Picks (RSS)" href="${prefix}feeds/picks.xml">
+<link rel="alternate" type="application/rss+xml" title="Pattern XI — Results (RSS)" href="${prefix}feeds/results.xml">
+<meta property="og:site_name" content="Pattern XI">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${esc(title)} · Pattern XI">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:url" content="${esc(canonicalUrl)}">
+<meta property="og:image" content="${esc(socialImage)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(title)} · Pattern XI">
+<meta name="twitter:description" content="${esc(description)}">
+<meta name="twitter:image" content="${esc(socialImage)}">
 <title>${esc(title)} · Pattern XI</title>
 <style>${STYLE}</style>
 </head>
@@ -1214,7 +1478,7 @@ ${upcoming.length === 0
     </ul>
   </article>
 </section>
-`, "index.html", "", window);
+`, "index.html", "", window, "index.html");
 }
 
 function buildTrackRecordPage(orderedPicks, settlements, standings, window) {
@@ -1311,7 +1575,7 @@ ${descending.length === 0
   </div>
   <p class="fineprint">Each pick links to its own detail page with the frozen price, the result chain and the component-by-component settlement.</p>
 </section>
-`, "track-record.html", "", window);
+`, "track-record.html", "", window, "track-record.html");
 }
 
 function buildVerificationPage(window) {
@@ -1366,7 +1630,7 @@ function buildVerificationPage(window) {
     <article class="panel method-card"><div class="k">03 · HISTORY</div><h3>Corrections append; history stays visible</h3><p>Published inputs are not silently replaced. A correction references the prior file bytes and creates a linear provenance chain.</p></article>
   </div>
 </section>
-`, "verification.html", "", window);
+`, "verification.html", "", window, "verification.html");
 }
 
 function buildPickPage(pick, settlement, window) {
@@ -1463,7 +1727,7 @@ ${components}
     </div>
   </article>
 </section>
-`, "track-record.html", "../", window);
+`, "track-record.html", "../", window, `picks/${pick.id}.html`);
 }
 
 export function buildSite(root, window = loadFormalWindow(root)) {
@@ -1476,6 +1740,7 @@ export function buildSite(root, window = loadFormalWindow(root)) {
   const dist = join(root, "site-dist");
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(join(dist, "picks"), { recursive: true });
+  mkdirSync(join(dist, "feeds"), { recursive: true });
 
   writeFileSync(join(dist, "index.html"), buildIndexPage(orderedPicks, settlements, standings, window));
   writeFileSync(join(dist, "track-record.html"), buildTrackRecordPage(orderedPicks, settlements, standings, window));
@@ -1483,6 +1748,16 @@ export function buildSite(root, window = loadFormalWindow(root)) {
   for (const pick of orderedPicks) {
     writeFileSync(join(dist, "picks", `${pick.id}.html`), buildPickPage(pick, settlements.get(pick.id), window));
   }
+
+  // Public distribution interfaces and search/share infrastructure (Gate O3).
+  // All generated one-way from the same ledger state, all deterministic.
+  writeFileSync(join(dist, "feeds", "picks.xml"), buildPicksFeed(orderedPicks, settlements, window));
+  writeFileSync(join(dist, "feeds", "results.xml"), buildResultsFeed(orderedPicks, settlements, window));
+  writeFileSync(join(dist, "sitemap.xml"), buildSitemap(orderedPicks));
+  writeFileSync(join(dist, "robots.txt"), buildRobots());
+  writeFileSync(join(dist, "404.html"), build404Page());
+  writeFileSync(join(dist, "favicon.svg"), FAVICON_SVG);
+  writeFileSync(join(dist, "og-image.png"), renderOgImagePng());
 
   console.log(`site built: ${orderedPicks.length} picks, ${standings.n} counted`);
 }
