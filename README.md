@@ -52,6 +52,12 @@ settlements/YYYY/<id>.json  Derived settlement details (generated; CI enforces f
 manifests/YYYY-MM-DD.txt    anchors branch: complete pick ledger snapshot + main SHA + previous manifest hash
 manifests/*.ots             anchors branch: OpenTimestamps Bitcoin anchoring receipts
 standings/standings.json    Derived standings projection (generated, rebuildable)
+feeds/picks.xml             RSS 2.0 feed of all picks (generated; GUID = permanent detail URL)
+feeds/results.xml           RSS 2.0 feed of settled results (corrections update items in place)
+sitemap.xml                 Generated sitemap of every public page
+robots.txt                  Generated crawler policy with the sitemap pointer
+404.html                    Generated not-found page (absolute links only)
+favicon.svg / og-image.png  Generated brand icon and deterministic social preview image
 src/settlement/             Settlement engine (52-case golden dataset)
 src/performance/            Standings projection (exact decimal)
 scripts/                    import / validate / settle / standings / manifest / build-site
