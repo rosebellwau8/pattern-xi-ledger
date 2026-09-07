@@ -1,0 +1,37 @@
+{
+  "schema": "pattern-xi.settlement.v1",
+  "pick_id": "2026-09-07-fixture-657a389d35ba-ah",
+  "kickoff_utc": "2026-09-07T03:19:00Z",
+  "frozen": {
+    "selection": "HOME",
+    "line": "-0.50",
+    "normalized_decimal_price": "1.95",
+    "frozen_scheduled_kickoff_at": "2026-09-07T03:19:00Z"
+  },
+  "revisions": [
+    {
+      "revision": 1,
+      "result_file": "results/2026/2026-09-07-fixture-657a389d35ba-ah.json",
+      "result_file_sha256": "426534314da0a5cec45c244b1fba414e198e1e69bd0ff167572a86d4d65e1865",
+      "facts": {
+        "match_status": "CANCELLED"
+      },
+      "settlement_facts": {
+        "match_status": "CANCELLED"
+      },
+      "result": {
+        "components": [],
+        "classification": "VOID",
+        "net_return": "0",
+        "record_state": "SETTLED"
+      }
+    }
+  ],
+  "current": {
+    "result_file": "results/2026/2026-09-07-fixture-657a389d35ba-ah.json",
+    "result_file_sha256": "426534314da0a5cec45c244b1fba414e198e1e69bd0ff167572a86d4d65e1865",
+    "classification": "VOID",
+    "net_return": "0",
+    "record_state": "SETTLED"
+  }
+}
