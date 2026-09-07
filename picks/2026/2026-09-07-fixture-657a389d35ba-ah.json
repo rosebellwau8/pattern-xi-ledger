@@ -1,0 +1,14 @@
+{
+  "schema": "pattern-xi.pick.v1",
+  "id": "2026-09-07-fixture-657a389d35ba-ah",
+  "match": "O2 Drill United v Acceptance City",
+  "competition": "SYNTHETIC-O2-DRILL",
+  "kickoff_utc": "2026-09-07T03:19:00Z",
+  "market": "asian_handicap",
+  "selection": "HOME",
+  "line": "-0.50",
+  "published_price": "0.95",
+  "published_price_format": "HONG_KONG_ODDS",
+  "normalized_decimal_price": "1.95",
+  "price_source": "synthetic o2 drill fixture (no real market data)"
+}
