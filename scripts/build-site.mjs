@@ -34,41 +34,48 @@ const REPO_URL = "https://github.com/rosebellwau8/pattern-xi-ledger";
 // stays relative so the site keeps working from any mirror path.
 const SITE_URL = "https://rosebellwau8.github.io/pattern-xi-ledger";
 
-// RSS/Atom-style public distribution interface (master prompt #9). Feeds are
-// generated one-way from the ledger by this build; they are never an input to
-// settlement, standings or any evidence layer. pubDate on pick items is the
-// fixture kickoff (UTC) - the only timestamp the frozen pick schema carries;
-// prospective *publication* is proven by the PR + Ledger integrity witness,
-// never by this feed. Item GUIDs are the permanent detail-page URLs: pick
-// files are immutable and result corrections update an item in place, so a
-// correction can never produce a duplicate feed item. No build-time clock is
-// consulted anywhere (no lastBuildDate), keeping the build byte-deterministic.
-function rfc822(iso) {
-  return new Date(iso).toUTCString();
-}
-
+// RSS-style public distribution interface (master prompt #9, amended Gate O3).
+// Feeds are generated one-way from the ledger by this build; they are never an
+// input to settlement, standings or any evidence layer.
+//
+// Distribution contract (safe by default):
+//   - During the shadow run (formal-window null/null) the channels exist but
+//     carry ZERO items: shadow/synthetic records stay public and auditable on
+//     their own URLs, yet nothing may flow towards automated distribution.
+//   - After a formal window declaration, items are exactly the records with
+//     kickoff inside [start_utc, end_utc).
+//   - pubDate is deliberately NOT emitted: the frozen pick schema carries no
+//     publication timestamp, Git timestamps are not evidence, and kickoff is
+//     event time - not publication time. Kickoff stays machine-readable via
+//     the <pxi:kickoffUtc> extension and human-readable in the description.
+//   - results.xml is a current-state feed: a correction updates the item in
+//     place (GUID = permanent detail URL) and is NOT a re-delivery event.
+// No build-time clock is consulted anywhere; builds stay byte-deterministic.
 function modeLabel(window) {
   return window.start_utc === null ? "shadow run" : "formal window";
 }
 
-function xmlItem({ title, link, description, pubDate }) {
+function xmlItem({ title, link, description, kickoffUtc }) {
   return `    <item>
       <title>${esc(title)}</title>
       <link>${esc(link)}</link>
       <guid isPermaLink="true">${esc(link)}</guid>
-      <pubDate>${rfc822(pubDate)}</pubDate>
+      <pxi:kickoffUtc>${esc(kickoffUtc)}</pxi:kickoffUtc>
       <description>${esc(description)}</description>
     </item>`;
 }
 
 function rssChannel({ kind, window, items }) {
   const mode = modeLabel(window);
+  const distributionNote = items.length === 0
+    ? `Distribution contract: during the ${mode} this channel deliberately carries zero items; shadow and synthetic records remain publicly auditable on their own pages but are not distribution-eligible.`
+    : "Distribution contract: items are exactly the records whose kickoff falls inside the declared formal verification window.";
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
+<rss version="2.0" xmlns:pxi="https://rosebellwau8.github.io/pattern-xi-ledger/ns">
   <channel>
     <title>Pattern XI — ${kind} (${mode})</title>
     <link>${SITE_URL}/</link>
-    <description>Public, prospective, auditable football Asian-handicap ${kind.toLowerCase()} from the Pattern XI ledger. Item pubDate is the fixture kickoff (UTC); prospective publication is proven by the public PR + Ledger integrity witness — see ${SITE_URL}/verification.html. Settlements are computed by the frozen Settlement Rules v1 engine.</description>
+    <description>Public, prospective, auditable football Asian-handicap ${kind.toLowerCase()} from the Pattern XI ledger. ${distributionNote} Prospective publication is proven by the public PR + Ledger integrity witness — see ${SITE_URL}/verification.html. Settlements are computed by the frozen Settlement Rules v1 engine. The results feed represents current result state: a correction updates an item in place and is not a re-delivery event.</description>
     <language>en-GB</language>
 ${items.join("\n")}
   </channel>
@@ -78,6 +85,7 @@ ${items.join("\n")}
 
 export function buildPicksFeed(orderedPicks, settlements, window) {
   const items = [...orderedPicks]
+    .filter((pick) => inFormalWindow(pick, window))
     .sort((left, right) => right.kickoffEpoch - left.kickoffEpoch || right.id.localeCompare(left.id))
     .map((pick) => {
       const current = settlements.get(pick.id)?.current;
@@ -88,7 +96,7 @@ export function buildPicksFeed(orderedPicks, settlements, window) {
         title: `${pick.data.match} — ${selectionLabel(pick.frozen)}`,
         link: `${SITE_URL}/picks/${pick.id}.html`,
         description: `${pick.data.competition}. Kickoff ${pick.kickoffUtc}. Asian handicap ${pick.frozen.selection} ${pick.frozen.line} @ ${pick.frozen.normalized_decimal_price} (${pick.data.published_price_format}). Price source: ${pick.data.price_source}. ${state}`,
-        pubDate: pick.kickoffUtc,
+        kickoffUtc: pick.kickoffUtc,
       });
     });
   return rssChannel({ kind: "Picks", window, items });
@@ -96,7 +104,7 @@ export function buildPicksFeed(orderedPicks, settlements, window) {
 
 export function buildResultsFeed(orderedPicks, settlements, window) {
   const items = [...orderedPicks]
-    .filter((pick) => settlements.get(pick.id)?.current !== undefined)
+    .filter((pick) => settlements.get(pick.id)?.current !== undefined && inFormalWindow(pick, window))
     .sort((left, right) => right.kickoffEpoch - left.kickoffEpoch || right.id.localeCompare(left.id))
     .map((pick) => {
       const current = settlements.get(pick.id).current;
@@ -106,18 +114,22 @@ export function buildResultsFeed(orderedPicks, settlements, window) {
         title: `${pick.data.match} — ${outcome}`,
         link: `${SITE_URL}/picks/${pick.id}.html`,
         description: `${pick.data.competition}. Kickoff ${pick.kickoffUtc}. Asian handicap ${pick.frozen.selection} ${pick.frozen.line} @ ${pick.frozen.normalized_decimal_price}. Settled by the frozen Settlement Rules v1 engine: ${outcome} (${net}). Facts and any corrections live in the append-only ledger.`,
-        pubDate: pick.kickoffUtc,
+        kickoffUtc: pick.kickoffUtc,
       });
     });
   return rssChannel({ kind: "Results", window, items });
 }
 
-export function buildSitemap(orderedPicks) {
+export function buildSitemap(orderedPicks, window) {
+  // Only indexable pages: the static surfaces plus formal-window pick details.
+  // Shadow/synthetic pick pages stay live and public, but stay out of the
+  // sitemap and carry noindex - search engines must not promote rehearsal
+  // records as Pattern XI content.
   const urls = [
     "index.html",
     "track-record.html",
     "verification.html",
-    ...orderedPicks.map((pick) => `picks/${pick.id}.html`),
+    ...orderedPicks.filter((pick) => inFormalWindow(pick, window)).map((pick) => `picks/${pick.id}.html`),
   ].map((path) => `  <url><loc>${SITE_URL}/${path}</loc></url>`);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -1242,7 +1254,7 @@ export function newsletterSlot(config = NEWSLETTER) {
     </article>`;
 }
 
-function page(title, description, body, activeNav, prefix, window, canonicalPath = "") {
+function page(title, description, body, activeNav, prefix, window, canonicalPath = "", robotsContent = null) {
   const navItems = [
     ["index.html", "Overview"],
     ["track-record.html", "Full Record"],
@@ -1262,13 +1274,14 @@ function page(title, description, body, activeNav, prefix, window, canonicalPath
   const subscribeHref = activeNav === "index.html" ? "#newsletter" : `${prefix}index.html#newsletter`;
   const canonicalUrl = `${SITE_URL}/${canonicalPath}`;
   const socialImage = `${SITE_URL}/og-image.png`;
+  const robotsMeta = robotsContent === null ? "" : `\n<meta name="robots" content="${esc(robotsContent)}">`;
   return `<!doctype html>
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="description" content="${esc(description)}">
+<meta name="description" content="${esc(description)}">${robotsMeta}
 <link rel="canonical" href="${esc(canonicalUrl)}">
 <link rel="icon" type="image/svg+xml" href="${prefix}favicon.svg">
 <link rel="alternate" type="application/rss+xml" title="Pattern XI — Picks (RSS)" href="${prefix}feeds/picks.xml">
@@ -1727,7 +1740,7 @@ ${components}
     </div>
   </article>
 </section>
-`, "track-record.html", "../", window, `picks/${pick.id}.html`);
+`, "track-record.html", "../", window, `picks/${pick.id}.html`, inFormalWindow(pick, window) ? null : "noindex,follow");
 }
 
 export function buildSite(root, window = loadFormalWindow(root)) {
@@ -1753,7 +1766,7 @@ export function buildSite(root, window = loadFormalWindow(root)) {
   // All generated one-way from the same ledger state, all deterministic.
   writeFileSync(join(dist, "feeds", "picks.xml"), buildPicksFeed(orderedPicks, settlements, window));
   writeFileSync(join(dist, "feeds", "results.xml"), buildResultsFeed(orderedPicks, settlements, window));
-  writeFileSync(join(dist, "sitemap.xml"), buildSitemap(orderedPicks));
+  writeFileSync(join(dist, "sitemap.xml"), buildSitemap(orderedPicks, window));
   writeFileSync(join(dist, "robots.txt"), buildRobots());
   writeFileSync(join(dist, "404.html"), build404Page());
   writeFileSync(join(dist, "favicon.svg"), FAVICON_SVG);
