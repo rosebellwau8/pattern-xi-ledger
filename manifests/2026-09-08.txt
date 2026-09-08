@@ -1,0 +1,7 @@
+manifest_version pattern-xi-ledger-manifest.v2
+snapshot_date 2026-09-08
+main_commit_sha 2354de4b07a6f3df036669b044cebf7ceec99691
+previous_manifest_sha256 812132a029afac85db906cb0f588fc7925fc35c4823c180902dd2d97d3064b20
+pick_count 2
+8afb5dcfdd672068d36c1a81e314052305ce896f1d7c2cbaf06fbe323e8d3ede  picks/2026/2026-09-04-synthetic-drill-ah.json
+9ae94f3cbcb79059a74d580dbd0a8adb885744d654c193c4f7dd917e05e604a4  picks/2026/2026-09-07-fixture-657a389d35ba-ah.json
