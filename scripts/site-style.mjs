@@ -112,7 +112,7 @@ export function styleSheet(fontsBase) {
     top: 0;
     z-index: 20;
     border-bottom: 1px solid var(--line);
-    background: rgba(16, 24, 32, .97);
+    background: var(--bg);
   }
   .masthead-inner {
     min-height: 76px;
