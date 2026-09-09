@@ -105,7 +105,9 @@ function polygonPoints(polys, centre) {
 
 // Inline/master icon SVG: off-white XI plus blue centre circle on an optional
 // deep blue-black tile. `ring: false` is the small-size favicon variant
-// (thin circle lines drop out at favicon sizes).
+// (thin circle lines drop out at favicon sizes). The letters carry an
+// explicit fill: SVG loaded as a standalone image has no inherited colour
+// and would otherwise fall back to black.
 export function brandIconSvg({ size = 64, tile = "none", ring = true, tileRadius = 96 }) {
   const polys = xiLockup({
     height: ring ? MASTER_LETTER_HEIGHT : 216,
@@ -120,18 +122,137 @@ export function brandIconSvg({ size = 64, tile = "none", ring = true, tileRadius
     const { radius, width } = circleForHeight(MASTER_LETTER_HEIGHT);
     parts.push(`<circle cx="256" cy="256" r="${radius}" fill="none" stroke="${BRAND.blue}" stroke-width="${width}"/>`);
   }
-  for (const text of polygonPoints(polys, 256)) parts.push(`<polygon points="${text}"/>`);
+  const letters = polygonPoints(polys, 256)
+    .map((points) => `<polygon points="${points}"/>`)
+    .join("\n    ");
+  parts.push(`<g fill="${BRAND.text}">\n    ${letters}\n  </g>`);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}" role="img" aria-label="Pattern XI">\n  ${parts.join("\n  ")}\n</svg>\n`;
 }
 
-// Horizontal lockup master: icon + "Pattern XI". The word is live text
-// (Inter with system fallback) so the SVG master stays editable; the raster
-// assets embed real outlines instead.
+// Emits one glyph as an SVG <path> "d" string in device space: same embedded
+// Inter outlines the rasterizer uses, curves preserved (no flattening), so
+// SVG masters render identically everywhere without shipping a font.
+function glyphPathData(character, weight, { x, baseline, size }) {
+  const glyph = glyphFor(character, weight);
+  const scale = size / UPEM;
+  const dX = (fontX) => x + fontX * scale;
+  const dY = (fontY) => baseline - fontY * scale;
+  const tokens = glyph.d.match(/[MLHVQCTSZmlhvqctsz]|-?\d*\.?\d+(?:e[-+]?\d+)?/g) ?? [];
+  let index = 0;
+  let px = 0; let py = 0;
+  const out = [];
+  const fmt = (value) => {
+    const fixed = value.toFixed(2).replace(/\.?0+$/, "");
+    return fixed === "-0" ? "0" : fixed;
+  };
+  while (index < tokens.length) {
+    const command = tokens[index++];
+    const args = [];
+    while (index < tokens.length && /[-\d.]/.test(tokens[index][0])) {
+      args.push(Number(tokens[index++]));
+    }
+    let position = 0;
+    const take = (count) => args.slice(position, (position += count));
+    const relative = command >= "a" && command <= "z";
+    switch (command.toUpperCase()) {
+      case "M": {
+        while (position < args.length) {
+          const [dx, dy] = take(2);
+          px = relative ? px + dx : dx;
+          py = relative ? py + dy : dy;
+          out.push(`M${fmt(dX(px))} ${fmt(dY(py))}`);
+        }
+        break;
+      }
+      case "L": {
+        while (position < args.length) {
+          px = relative ? px + args[position] : args[position];
+          py = relative ? py + args[position + 1] : args[position + 1];
+          position += 2;
+          out.push(`L${fmt(dX(px))} ${fmt(dY(py))}`);
+        }
+        break;
+      }
+      case "H": {
+        while (position < args.length) {
+          px = relative ? px + args[position] : args[position];
+          position += 1;
+          out.push(`H${fmt(dX(px))}`);
+        }
+        break;
+      }
+      case "V": {
+        while (position < args.length) {
+          py = relative ? py + args[position] : args[position];
+          position += 1;
+          out.push(`V${fmt(dY(py))}`);
+        }
+        break;
+      }
+      case "Q": {
+        while (position < args.length) {
+          const [c1x, c1y, ex, ey] = take(4);
+          const acx = relative ? px + c1x : c1x;
+          const acy = relative ? py + c1y : c1y;
+          px = relative ? px + ex : ex;
+          py = relative ? py + ey : ey;
+          out.push(`Q${fmt(dX(acx))} ${fmt(dY(acy))} ${fmt(dX(px))} ${fmt(dY(py))}`);
+        }
+        break;
+      }
+      case "C": {
+        while (position < args.length) {
+          const [c1x, c1y, c2x, c2y, ex, ey] = take(6);
+          const a1x = relative ? px + c1x : c1x;
+          const a1y = relative ? py + c1y : c1y;
+          const a2x = relative ? px + c2x : c2x;
+          const a2y = relative ? py + c2y : c2y;
+          px = relative ? px + ex : ex;
+          py = relative ? py + ey : ey;
+          out.push(`C${fmt(dX(a1x))} ${fmt(dY(a1y))} ${fmt(dX(a2x))} ${fmt(dY(a2y))} ${fmt(dX(px))} ${fmt(dY(py))}`);
+        }
+        break;
+      }
+      case "Z": {
+        out.push("Z");
+        break;
+      }
+      default:
+        throw new Error(`unsupported glyph path command: ${command}`);
+    }
+  }
+  return out.join("");
+}
+
+// Horizontal lockup master: icon + "Pattern XI" drawn as real Inter outlines
+// (scripts/brand-type.mjs), so every environment renders identical letterforms
+// with no font dependency. "XI" carries the light-blue accent.
 export function wordmarkSvg() {
   const icon = brandIconSvg({ size: 128, ring: true }).replace("<svg ", '<svg x="0" y="16" ');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" width="640" height="160" role="img" aria-label="Pattern XI">
+  const size = 76;
+  const spacing = -1.5;
+  const baseline = 104;
+  const startX = 172;
+  const groups = [
+    { text: "Pattern ", color: BRAND.text },
+    { text: "XI", color: BRAND.blueLight },
+  ];
+  const paths = [];
+  let penX = startX;
+  for (const group of groups) {
+    const segments = [];
+    for (const character of group.text) {
+      const glyph = GLYPHS[String(800)][character];
+      if (!glyph) throw new Error(`no Inter glyph for ${JSON.stringify(character)}`);
+      if (glyph.d) segments.push(glyphPathData(character, 800, { x: penX, baseline, size }));
+      penX += glyph.w * (size / UPEM) + spacing;
+    }
+    paths.push(`<path fill="${group.color}" d="${segments.join("")}"/>`);
+  }
+  const width = Math.ceil(penX - spacing) + 8;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 160" width="${width}" height="160" role="img" aria-label="Pattern XI">
   ${icon.trim()}
-  <text x="172" y="104" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="76" font-weight="800" letter-spacing="-1.5" fill="${BRAND.text}">Pattern <tspan fill="${BRAND.blueLight}">XI</tspan></text>
+  ${paths.join("\n  ")}
 </svg>
 `;
 }

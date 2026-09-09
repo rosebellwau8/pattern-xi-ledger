@@ -323,25 +323,30 @@ function tickLabel(value) {
   return String(Number((Math.round(value * 100) / 100).toFixed(2)));
 }
 
-// Deterministic mini sparkline for the KPI strip. Values come from ledger
-// data; an empty or single-point series renders the flat baseline used in
-// the approved mockups.
+// Deterministic mini sparkline for the KPI strip, drawn only from real ledger
+// series. An empty or single-point series has no shape worth drawing: the
+// caller omits the sparkline entirely instead of showing a decorative flat
+// line that could be read as data.
 function sparkPoints(values) {
-  if (values.length < 2) return "2,28 98,28";
+  if (values.length < 2) return null;
   let lo = Math.min(...values);
   let hi = Math.max(...values);
-  if (hi === lo) return "2,28 98,28";
+  if (hi === lo) return null;
   const y = (value) => 34 - ((value - lo) / (hi - lo)) * 28;
   return values
     .map((value, index) => `${(2 + (index / (values.length - 1)) * 96).toFixed(1)},${y(value).toFixed(1)}`)
     .join(" ");
 }
 
-function kpiCard(icon, value, labelLines, spark, extraClass = "") {
-  return `<article class="kpi"${extraClass}>
+function kpiCard(icon, value, labelLines, spark = null, extraClass = "") {
+  const sparkSvg = spark === null
+    ? ""
+    : `<svg class="spark" viewBox="0 0 100 40" aria-hidden="true"><polyline points="${spark}"/></svg>`;
+  const noSpark = spark === null ? " kpi-nospark" : "";
+  return `<article class="kpi${noSpark}"${extraClass}>
       <div class="kpi-icon">${icon}</div>
       <div><strong>${value}</strong><span>${labelLines}</span></div>
-      <svg class="spark" viewBox="0 0 100 40" aria-hidden="true"><polyline points="${spark}"/></svg>
+      ${sparkSvg}
     </article>`;
 }
 
@@ -430,27 +435,16 @@ function curveChart(curve, width, height, gradientId, firstLabel, lastLabel) {
       </svg>`;
 }
 
-// Empty-state placeholder chart from the approved mockups: reference grid
-// with the "begins once two picks have settled" overlay. Axis labels stay
-// generic ("First" / "Latest") because the real span is data-dependent.
+// Empty state: no pseudo-data. A single dashed zero line marks where the
+// cumulative curve will start; the explanation comes from the panel's
+// overlay message ("The equity curve begins once two picks have settled."),
+// so the chart itself draws nothing that could be mistaken for a figure.
 function emptyCurveChart(width, height) {
   const left = width > 500 ? 48 : 34;
   const right = width - 16;
-  const top = 24;
-  const bottom = height - 20;
-  const y1 = top;
-  const y2 = top + (bottom - top) / 2;
-  const y3 = bottom;
-  return `<svg class="chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
-        <line class="grid" x1="${left}" y1="${y1}" x2="${right}" y2="${y1}"/>
-        <line class="grid" x1="${left}" y1="${y2}" x2="${right}" y2="${y2}"/>
-        <line class="grid" x1="${left}" y1="${y3}" x2="${right}" y2="${y3}"/>
-        <text class="axis" x="${left - 6}" y="${y1 + 4}" text-anchor="end">+10</text>
-        <text class="axis" x="${left - 6}" y="${y2 + 4}" text-anchor="end">0</text>
-        <text class="axis" x="${left - 6}" y="${y3 + 4}" text-anchor="end">-10</text>
-        <text class="axis" x="${left}" y="${height - 5}">First</text>
-        <text class="axis" x="${right}" y="${height - 5}" text-anchor="end">Latest</text>
-        <polyline class="line" points="${left},${y2} ${right},${y2}"/>
+  const zeroY = height * 0.78;
+  return `<svg class="chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="No settled picks yet — the cumulative return curve starts at zero">
+        <line class="grid" x1="${left}" y1="${zeroY}" x2="${right}" y2="${zeroY}"/>
       </svg>`;
 }
 
@@ -648,8 +642,7 @@ function buildIndexPage(orderedPicks, settlements, standings, window) {
 <section class="kpi-strip" aria-label="At a glance">
   ${kpiCard("⌁", official.pick_count, "Official Picks<br>Current ledger", sparkPoints(officialSparks))}
   ${kpiCard("◎", standings.n, "Settled Picks<br>All-time, voids excluded", sparkPoints(netSpark))}
-  ${kpiCard("⏱", "≥2h", "Publication Gate<br>GitHub witness", "2,29 18,29 34,29 50,22 66,22 82,22 98,15")}
-  ${kpiCard("◇", "52", "Golden Cases<br>51 tested + 1 exception", "2,29 18,26 34,28 50,21 66,22 82,17 98,18")}
+  ${kpiCard("⏱", "≥2h", "Publication Gate<br>GitHub witness")}
 </section>
 
 <section class="dashboard-row">
@@ -874,7 +867,7 @@ function buildVerificationPage(window) {
   <aside class="verify-side">
     <article class="panel truth-card"><h2>What this proves</h2><p><strong>Publication:</strong> the exact final pick version was publicly exposed and passed the GitHub-hosted two-hour gate.</p><p><strong>Historical state:</strong> Bitcoin-anchored manifests create an independent cryptographic record of previously published ledger states.</p><p><strong>Reproducibility:</strong> settlement and standings can be rebuilt deterministically from committed inputs.</p></article>
     <article class="panel truth-card"><h2>What it does not prove</h2><ul><li>Scores and prices remain operator-entered facts and are not independently verified here.</li><li>Repository owners still control GitHub settings; GitHub history itself is not cryptographically immutable.</li><li>The static design greatly reduces the operational attack surface but still depends on GitHub, Actions, Pages and OpenTimestamps.</li></ul></article>
-    <article class="panel truth-card"><h2>Settlement integrity</h2><p>Settlement mathematics is frozen under Settlement Rules v1 and guarded by a 52-case owner-reviewed golden dataset (51 behavioral cases; database preview case 045 is explicitly exempted in DESIGN.md). Result facts are inputs; win / half-win / push / half-loss / loss / void and net return are program-derived.</p></article>
+    <article class="panel truth-card"><h2>Settlement integrity</h2><p class="truth-stat"><strong>52</strong> golden cases guard the engine — 51 tested behaviors + 1 documented exception (case 045).</p><p>Settlement mathematics is frozen under Settlement Rules v1 and guarded by a 52-case owner-reviewed golden dataset (51 behavioral cases; database preview case 045 is explicitly exempted in DESIGN.md). Result facts are inputs; win / half-win / push / half-loss / loss / void and net return are program-derived.</p></article>
   </aside>
 </section>
 

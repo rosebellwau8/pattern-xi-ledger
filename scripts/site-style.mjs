@@ -302,7 +302,7 @@ export function styleSheet(fontsBase) {
   /* KPI strip */
   .kpi-strip {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0,1fr));
+    grid-template-columns: repeat(3, minmax(0,1fr));
     gap: 10px;
     margin-top: 10px;
   }
@@ -317,6 +317,7 @@ export function styleSheet(fontsBase) {
     border-radius: 12px;
     background: var(--panel-2);
   }
+  .kpi-nospark { grid-template-columns: 46px minmax(0,1fr); }
   .kpi-icon {
     width: 42px; height: 42px;
     display: grid; place-items: center;
@@ -622,7 +623,6 @@ export function styleSheet(fontsBase) {
     .nav { gap:24px; }
     .hero-grid { grid-template-columns:1fr .72fr; }
     h1 { font-size:clamp(2.8rem, 6vw, 4.7rem); }
-    .kpi-strip { grid-template-columns:repeat(2,1fr); }
     .dashboard-row { grid-template-columns:1fr; }
     .curve-panel { min-height:240px; }
     .integrity-steps { grid-template-columns:repeat(3,1fr); row-gap:14px; }
@@ -671,13 +671,14 @@ export function styleSheet(fontsBase) {
     .standfirst { margin-top:14px; font-size:1rem; }
     .cta-row { margin-top:16px; }
     .summary-card { box-shadow:none; }
-    .kpi-strip { grid-template-columns:repeat(2,1fr); gap:8px; }
+    .kpi-strip { grid-template-columns:1fr; gap:8px; }
     .kpi {
       min-height:78px;
       grid-template-columns:36px 1fr;
       gap:9px;
       padding:10px;
     }
+    .kpi-nospark { grid-template-columns:36px 1fr; }
     .kpi-icon { width:34px; height:34px; }
     .kpi strong { font-size:1.25rem; }
     .kpi .spark { display:none; }
@@ -716,12 +717,30 @@ export function styleSheet(fontsBase) {
     .utility-inner a + a::after { content:"GitHub ↗"; }
     .shadow-banner-inner { padding:8px 10px; }
     h1 { font-size:2.8rem; }
-    .kpi-strip { grid-template-columns:1fr 1fr; }
     .kpi span { font-size:.7rem; }
     .summary-card { padding:15px; }
     .metric-grid { grid-template-columns:1fr 1fr; }
     .metric-card { padding:10px; min-height:84px; }
     .metric-card .value { font-size:1.4rem; }
+  }
+
+  .truth-stat {
+    margin: 0 0 9px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-deep);
+    color: var(--muted);
+    font-size: .78rem;
+  }
+  .truth-stat strong {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--blue-light);
+    font-size: 1.7rem;
+    font-weight: 800;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
   }
 `;
 }
