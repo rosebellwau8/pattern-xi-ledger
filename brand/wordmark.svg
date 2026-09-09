@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" width="640" height="160" role="img" aria-label="Pattern XI">
+  <svg x="0" y="16" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="128" height="128" role="img" aria-label="Pattern XI">
+  <circle cx="256" cy="256" r="199" fill="none" stroke="#2563EB" stroke-width="13"/>
+  <polygon points="123.5,167.9 299.5,367.9 326.5,344.1 150.5,144.1"/>
+  <polygon points="299.5,144.1 123.5,344.1 150.5,367.9 326.5,167.9"/>
+  <polygon points="339,156 375,156 375,356 339,356"/>
+</svg>
+  <text x="172" y="104" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="76" font-weight="800" letter-spacing="-1.5" fill="#F4F0E6">Pattern <tspan fill="#7DB4FF">XI</tspan></text>
+</svg>
