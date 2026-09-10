@@ -207,8 +207,10 @@ test("pages carry canonical, Open Graph, X card, favicon and RSS autodiscovery",
     assert.match(index, new RegExp(`<link rel="alternate" type="application/rss\\+xml" title="Pattern XI — Picks \\(RSS\\)" href="feeds/picks\\.xml">`, "u"));
     assert.match(index, new RegExp(`<link rel="alternate" type="application/rss\\+xml" title="Pattern XI — Results \\(RSS\\)" href="feeds/results\\.xml">`, "u"));
     assert.match(index, new RegExp(`<meta property="og:url" content="${SITE_URL}/index\\.html">`, "u"));
-    assert.match(index, new RegExp(`<meta property="og:image" content="${SITE_URL}/og-image\\.png">`, "u"));
+    assert.match(index, new RegExp(`<meta property="og:image" content="${SITE_URL}/og-image-v2\\.png">`, "u"));
     assert.match(index, /<meta name="twitter:card" content="summary_large_image">/u);
+    assert.match(index, /<meta name="twitter:site" content="@patternxi_xi">/u);
+    assert.match(index, /<link rel="apple-touch-icon" href="apple-touch-icon\.png">/u);
 
     const pick = readFileSync(join(root, `site-dist/picks/${upcomingId}.html`), "utf8");
     assert.match(pick, new RegExp(`<link rel="canonical" href="${SITE_URL}/picks/${upcomingId}\\.html">`, "u"));

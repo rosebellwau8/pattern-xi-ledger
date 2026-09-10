@@ -209,12 +209,17 @@ test("homepage binds the dark dashboard design to ledger data", () => {
     assert.match(html, /Official Picks<\/dt><dd>0<\/dd>/u);
     assert.match(html, /Formal 90-day verification has not started\. Shadow-run records are excluded\./u);
 
-    // KPI strip mixes official counts, live ledger counts and fixed facts.
+    // KPI strip mixes official counts, live ledger counts and a fixed fact.
+    // Sparks appear only when a real ledger series exists; the golden-case
+    // engineering stat lives on the verification page now.
     assert.match(html, /Official Picks<br>Current ledger/u);
     assert.match(html, /<strong>0<\/strong><span>Official Picks<br>Current ledger<\/span>/u);
     assert.match(html, /<strong>2<\/strong><span>Settled Picks<br>All-time, voids excluded<\/span>/u);
     assert.match(html, /Publication Gate<br>GitHub witness/u);
-    assert.match(html, /Golden Cases<br>51 tested \+ 1 exception/u);
+    assert.doesNotMatch(html, /Golden Cases/u);
+    // Shadow run: the official-picks series is empty, so its sparkline is
+    // omitted rather than drawn as a decorative flat line.
+    assert.match(html, /<article class="kpi kpi-nospark">\s*<div class="kpi-icon">⌁<\/div>/u);
 
     // Two settled picks mean the equity curve is rendered for real.
     assert.match(html, /<polyline class="line" points=/u);
@@ -315,6 +320,8 @@ test("verification page separates the PR witness from the independent Bitcoin an
     assert.match(html, /not cryptographically immutable/u);
     assert.match(html, /<section id="methodology"/u);
     assert.match(html, /href="verification\.html#methodology"/u);
+    // The golden-case engineering stat is anchored here, not on the homepage.
+    assert.match(html, /<strong>52<\/strong> golden cases guard the engine — 51 tested behaviors \+ 1 documented exception/u);
     assert.doesNotMatch(html, /nothing has been altered since|Every pick is listed once/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
